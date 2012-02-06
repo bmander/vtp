@@ -1,7 +1,7 @@
 var fs = require('fs');
 var zlib = require('zlib');
 
-var wiretype={'STRING':2,
+var wiretype={'LENGTH':2,
               'VARINT':0};
 
 function hexary(ary){
@@ -54,7 +54,7 @@ function readField(buf,offset){
   nread += fielddef[1];
 
   var val = null;
-  if(wire_type==wiretype.STRING){
+  if(wire_type==wiretype.LENGTH){
     var strlendef = readVarint(buf,offset+nread);
     var strlen = strlendef[0];
     nread += strlendef[1]; 
@@ -90,35 +90,103 @@ function readMessage(buf){
   return ret;
 }
 
-fs.open( "/storage/maps/boston.osm.pbf", "r", function(err,fd) {
+function readFileblock(fd, fileoffset, callback){
+  var ret = {};
+
   var buf = new Buffer(4);
-  var fileoffset=0;
+  var totalRead=0;
   fs.read(fd,buf,0,4,fileoffset,function(err,bytesRead,buffer){
-    fileoffset += 4;
+    totalRead += bytesRead;
+    fileoffset += bytesRead;
 
     var headerLength = buf.readUInt32BE(0);
     var headerbuf = new Buffer(headerLength);
     fs.read(fd,headerbuf,0,headerLength,fileoffset,function(err,bytesRead,buffer){
-      fileoffset += headerLength;
+      totalRead += bytesRead;
+      fileoffset += bytesRead;
 
-      var message = readMessage( headerbuf );
-      console.log( message );
+      var headerMessage = readMessage( headerbuf );
+      ret['header']=headerMessage;
 
-      var bloblen = message['3'][0];
+      var bloblen = headerMessage['3'][0];
       var blobbuf = new Buffer(bloblen);
       fs.read(fd,blobbuf,0,bloblen,fileoffset,function(err,bytesRead,buffer){
-        console.log( blobbuf );
-        var blobmessage = readMessage( blobbuf );
-        console.log( blobmessage );
-        console.log( blobmessage['3'][0].length );
-        zlib.unzip(blobmessage['3'][0],function(err,buffer){
-          console.log( buffer );
-          console.log( buffer.length );
-          var osmheader = readMessage( buffer );
-          console.log( osmheader );
-          console.log( osmheader['4'][1].toString('utf8') );
-        });
+        totalRead += bytesRead;
+        fileoffset += bytesRead;
+
+        var packedBlobMessage = readMessage( blobbuf );
+        if( packedBlobMessage['1'] !== undefined ) {
+          ret['blob']=readMessage(packedBlobMessage['1']);
+          callback( ret, totalRead );
+        } else if( packedBlobMessage['3'] !== undefined ) {
+          zlib.unzip(packedBlobMessage['3'][0],function(err,buffer){
+            var unpackedBlobMessage = readMessage( buffer );
+            ret['blob'] = unpackedBlobMessage;
+            callback( ret, totalRead );
+          });
+        }
       });
+    });
+  });
+}
+
+function readRepeated(buf){
+  ret = []
+
+  var i=0;
+  while(i<buf.length){
+    var valdef = readVarint(buf,i);
+    var val=valdef[0];
+    ret.push( val );
+    i += valdef[1];
+  }
+
+  return ret;
+}
+
+function StringTable(message){
+  this.data = message['1']
+  this.getString = function(i){
+    return this.data[i].toString();
+  }
+}
+
+function DenseInfo(message) {
+  this.version = readRepeated( message['1'][0] );
+  this.timestamp = readRepeated( message['2'][0] );
+  this.changeset = readRepeated( message['3'][0] );
+  this.uid = readRepeated( message['4'][0] );
+  this.user_sid = readRepeated( message['5'][0] );
+}
+
+function DenseNodes(message){
+  this.ids = readRepeated( message['1'][0] );
+  this.denseinfo = new DenseInfo( readMessage( message['5'][0] ) );
+  this.lat = readRepeated( message['8'][0] );
+  this.lon = readRepeated( message['9'][0] );
+  this.keys_vals = readRepeated( message['10'][0] );
+
+  console.log(this.keys_vals[3]);
+}
+
+function PrimitiveGroup(message){
+  this.dense = new DenseNodes( readMessage( message['2'][0] ) )
+}
+
+function OSMData(fb){
+  if( fb['header']['1'].toString() !== "OSMData" ) {
+    throw "Not an OSMData fileblock";
+  }
+
+  this.stringtable = new StringTable( readMessage( fb['blob']['1'][0] ) );
+  this.primitivegroup = new PrimitiveGroup( readMessage( fb['blob']['2'][0] ) );
+}
+
+fs.open( "/storage/maps/boston.osm.pbf", "r", function(err,fd) {
+  readFileblock(fd, 0, function(fb,bytesRead){
+    readFileblock(fd, bytesRead, function(fb,bytesRead){
+      var osmdata = new OSMData(fb);
+      
     });
   });
 });
