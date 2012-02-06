@@ -77,9 +77,13 @@ function Message(buf){
   }
 
   this.val = function(tag){
+    if(!this.hasField(tag))
+      return null;
     return this.fields[tag.toString()][0];
   }
   this.vals = function(tag){
+    if(!this.hasField(tag))
+      return []
     return this.fields[tag.toString()];
   }
   this.hasField = function(tag){
@@ -87,49 +91,60 @@ function Message(buf){
   }
 }
 
-function readFileblock(fd, fileoffset, callback){
-  var ret = {};
+function BlobHeader(message){
+  this.type = message.val(1).toString();
+  this.indexdata = message.val(2);
+  this.datasize = message.val(3);
+}
 
-  // read header length
-  var buf = new Buffer(4);
-  var totalRead=0;
-  fs.read(fd,buf,0,4,fileoffset,function(err,bytesRead,buffer){
-    totalRead += bytesRead;
-    fileoffset += bytesRead;
+function Fileblock(fd, fileoffset, callback){
+  this.fd=fd;
+  this.fileoffset=fileoffset;
+  this.header=null;
+  this.payload=null;
 
-    // read the header
-    var headerLength = buf.readUInt32BE(0);
-    var headerbuf = new Buffer(headerLength);
-
-    fs.read(fd,headerbuf,0,headerLength,fileoffset,function(err,bytesRead,buffer){
+  this.read = function(callback){
+    // read header length
+    var buf = new Buffer(4);
+    var totalRead=0;
+    fs.read(fd,buf,0,4,fileoffset,function(err,bytesRead,buffer){
       totalRead += bytesRead;
       fileoffset += bytesRead;
 
-      var headerMessage = new Message( headerbuf );
-      ret['header']=headerMessage;
+      // read the header
+      var headerLength = buf.readUInt32BE(0);
+      var headerbuf = new Buffer(headerLength);
 
-      // read the blob payload
-      var bloblen = headerMessage.val(3);
-      var blobbuf = new Buffer(bloblen);
-      fs.read(fd,blobbuf,0,bloblen,fileoffset,function(err,bytesRead,buffer){
+      fs.read(fd,headerbuf,0,headerLength,fileoffset,function(err,bytesRead,buffer){
         totalRead += bytesRead;
         fileoffset += bytesRead;
 
-        var packedBlobMessage = new Message( blobbuf );
+        var headerMessage = new Message( headerbuf );
+        this.header= new BlobHeader(headerMessage);
 
-        if( packedBlobMessage.hasField(1) ) {
-          ret['blob']=new Message(packedBlobMessage.val(1));
-          callback( ret, totalRead );
-        } else if( packedBlobMessage.hasField(3) ) {
-          zlib.unzip(packedBlobMessage.val(3),function(err,buffer){
-            var unpackedBlobMessage = new Message( buffer );
-            ret['blob'] = unpackedBlobMessage;
-            callback( ret, totalRead );
-          });
-        }
+        // read the blob payload
+        var bloblen = headerMessage.val(3);
+        var blobbuf = new Buffer(bloblen);
+        fs.read(fd,blobbuf,0,bloblen,fileoffset,function(err,bytesRead,buffer){
+          totalRead += bytesRead;
+          fileoffset += bytesRead;
+
+          var packedBlobMessage = new Message( blobbuf );
+
+          if( packedBlobMessage.hasField(1) ) {
+            this.payload=new Message(packedBlobMessage.val(1));
+            callback( this, totalRead );
+          } else if( packedBlobMessage.hasField(3) ) {
+            zlib.unzip(packedBlobMessage.val(3),function(err,buffer){
+              var unpackedBlobMessage = new Message( buffer );
+              this.payload = unpackedBlobMessage;
+              callback( this, totalRead );
+            });
+          }
+        });
       });
     });
-  });
+  }
 }
 
 function readRepeated(buf){
@@ -196,7 +211,9 @@ function FileBlockFile(path){
         offset += bytesRead;
         if(offset==stats.size)
           return;
-        readFileblock(fd,offset,onblobread);
+
+        var fileblock = new Fileblock(fd,offset,onblobread);
+        fileblock.read( onblobread );
       }
       onblobread(null,0);
     });
