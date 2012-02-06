@@ -182,17 +182,29 @@ function OSMData(fb){
   this.primitivegroup = new PrimitiveGroup( new Message( fb['blob'].val(2) ) );
 }
 
-var path="/storage/maps/boston.osm.pbf";
-fs.open( path, "r", function(err,fd) {
-  var stats = fs.statSync( path );
+function FileBlockFile(path){
+  this.read = function(callback){
+    fs.open( path, "r", function(err,fd) {
+      var stats = fs.statSync( path );
 
-  var offset=0;
-  var onblobread = function(fb,bytesRead){
-    offset += bytesRead;
-    if(offset==stats.size)
-      return;
-    readFileblock(fd,offset,onblobread);
+      var offset=0;
+      var onblobread = function(fb,bytesRead){
+        if(fb){
+          callback(fb);
+        }
+
+        offset += bytesRead;
+        if(offset==stats.size)
+          return;
+        readFileblock(fd,offset,onblobread);
+      }
+      onblobread(null,0);
+    });
   }
-  onblobread(null,0);
-});
+}
 
+var path="/storage/maps/boston.osm.pbf";
+var fileblockfile = new FileBlockFile(path);
+fileblockfile.read(function(fb){
+  console.log(fb.header);
+})
