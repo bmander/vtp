@@ -97,51 +97,54 @@ function BlobHeader(message){
   this.datasize = message.val(3);
 }
 
-function Fileblock(fd, fileoffset, callback){
+function Fileblock(fd, fileoffset){
   this.fd=fd;
   this.fileoffset=fileoffset;
+  this.headersize=null;
+  this.payloadsize=null;
+  this.len=null;
   this.header=null;
   this.payload=null;
 
-  this.read = function(callback){
+  var metathis=this;
+
+  this.readHeader = function(callback){
     // read header length
     var buf = new Buffer(4);
-    var totalRead=0;
-    fs.read(fd,buf,0,4,fileoffset,function(err,bytesRead,buffer){
-      totalRead += bytesRead;
-      fileoffset += bytesRead;
+    fs.read(fd,buf,0,4,this.fileoffset,function(err,bytesRead,buffer){
 
       // read the header
-      var headerLength = buf.readUInt32BE(0);
-      var headerbuf = new Buffer(headerLength);
-
-      fs.read(fd,headerbuf,0,headerLength,fileoffset,function(err,bytesRead,buffer){
-        totalRead += bytesRead;
-        fileoffset += bytesRead;
+      metathis.headersize = buf.readUInt32BE(0);
+      var headerbuf = new Buffer(metathis.headersize);
+      fs.read(fd,headerbuf,0,metathis.headersize,metathis.fileoffset+4,function(err,bytesRead,buffer){
 
         var headerMessage = new Message( headerbuf );
-        this.header= new BlobHeader(headerMessage);
+        metathis.header= new BlobHeader(headerMessage);
+        metathis.payloadsize = metathis.header.datasize;
+        metathis.size=4+metathis.headersize+metathis.payloadsize;
+        callback(metathis);
+      });
+    });
+  }
 
-        // read the blob payload
-        var bloblen = headerMessage.val(3);
-        var blobbuf = new Buffer(bloblen);
-        fs.read(fd,blobbuf,0,bloblen,fileoffset,function(err,bytesRead,buffer){
-          totalRead += bytesRead;
-          fileoffset += bytesRead;
+  this.read = function(callback){
+    this.readHeader(function(fb){
+      // read the blob payload
+      var blobbuf = new Buffer(metathis.payloadsize);
+      fs.read(fd,blobbuf,0,metathis.payloadsize,metathis.fileoffset+metathis.headersize+4,function(err,bytesRead,buffer){
 
-          var packedBlobMessage = new Message( blobbuf );
+        var packedBlobMessage = new Message( blobbuf );
 
-          if( packedBlobMessage.hasField(1) ) {
-            this.payload=new Message(packedBlobMessage.val(1));
-            callback( this, totalRead );
-          } else if( packedBlobMessage.hasField(3) ) {
-            zlib.unzip(packedBlobMessage.val(3),function(err,buffer){
-              var unpackedBlobMessage = new Message( buffer );
-              this.payload = unpackedBlobMessage;
-              callback( this, totalRead );
-            });
-          }
-        });
+        if( packedBlobMessage.hasField(1) ) {
+          metathis.payload=new Message(packedBlobMessage.val(1));
+          callback( metathis );
+        } else if( packedBlobMessage.hasField(3) ) {
+          zlib.unzip(packedBlobMessage.val(3),function(err,buffer){
+            var unpackedBlobMessage = new Message( buffer );
+            metathis.payload = unpackedBlobMessage;
+            callback( metathis );
+          });
+        }
       });
     });
   }
@@ -203,16 +206,16 @@ function FileBlockFile(path){
       var stats = fs.statSync( path );
 
       var offset=0;
-      var onblobread = function(fb,bytesRead){
+      var onblobread = function(fb){
         if(fb){
+          offset += fb.size;
           callback(fb);
         }
 
-        offset += bytesRead;
         if(offset==stats.size)
           return;
 
-        var fileblock = new Fileblock(fd,offset,onblobread);
+        var fileblock = new Fileblock(fd,offset);
         fileblock.read( onblobread );
       }
       onblobread(null,0);
