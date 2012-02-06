@@ -4,18 +4,6 @@ var zlib = require('zlib');
 var wiretype={'LENGTH':2,
               'VARINT':0};
 
-function hexary(ary){
-  var ret=[];
-  for(var i in ary){
-    ret[i]=ary[i].toString(16);
-  }
-  return ret;
-}
-
-function peek(ary){
-  return ary[ary.length-1];
-}
-
 function more_bytes(bb){
   return (bb&0x80)==0x80;
 }
@@ -59,7 +47,6 @@ function readField(buf,offset){
     var strlen = strlendef[0];
     nread += strlendef[1]; 
     val = buf.slice(offset+nread,offset+nread+strlen);
-    //val = buf.toString( 'utf8', offset+nread, strlen );
     nread += strlen;
   } else if(wire_type==wiretype.VARINT) {
     valdef = readVarint( buf, offset+nread );
@@ -70,8 +57,9 @@ function readField(buf,offset){
   return [field_number, val, nread];
 }
 
-function readMessage(buf){
-  var ret = {};
+function Message(buf){
+  this.fields = {}
+
   var offset=0;
   while(offset<buf.length){
     var field = readField( buf, offset );
@@ -79,48 +67,62 @@ function readMessage(buf){
     var fval=field[1];
     var flen=field[2];
 
-    if(ret[ftag] === undefined){
-      ret[ftag] = []
+    if(this.fields[ftag] === undefined){
+      this.fields[ftag] = []
     }
 
-    ret[ftag].push(fval);
+    this.fields[ftag].push(fval);
     offset += flen;
     
   }
-  return ret;
+
+  this.val = function(tag){
+    return this.fields[tag.toString()][0];
+  }
+  this.vals = function(tag){
+    return this.fields[tag.toString()];
+  }
+  this.hasField = function(tag){
+    return this.fields[tag.toString()]!==undefined
+  }
 }
 
 function readFileblock(fd, fileoffset, callback){
   var ret = {};
 
+  // read header length
   var buf = new Buffer(4);
   var totalRead=0;
   fs.read(fd,buf,0,4,fileoffset,function(err,bytesRead,buffer){
     totalRead += bytesRead;
     fileoffset += bytesRead;
 
+    // read the header
     var headerLength = buf.readUInt32BE(0);
     var headerbuf = new Buffer(headerLength);
+
     fs.read(fd,headerbuf,0,headerLength,fileoffset,function(err,bytesRead,buffer){
       totalRead += bytesRead;
       fileoffset += bytesRead;
 
-      var headerMessage = readMessage( headerbuf );
+      var headerMessage = new Message( headerbuf );
       ret['header']=headerMessage;
 
-      var bloblen = headerMessage['3'][0];
+      // read the blob payload
+      var bloblen = headerMessage.val(3);
       var blobbuf = new Buffer(bloblen);
       fs.read(fd,blobbuf,0,bloblen,fileoffset,function(err,bytesRead,buffer){
         totalRead += bytesRead;
         fileoffset += bytesRead;
 
-        var packedBlobMessage = readMessage( blobbuf );
-        if( packedBlobMessage['1'] !== undefined ) {
-          ret['blob']=readMessage(packedBlobMessage['1']);
+        var packedBlobMessage = new Message( blobbuf );
+
+        if( packedBlobMessage.hasField(1) ) {
+          ret['blob']=new Message(packedBlobMessage.val(1));
           callback( ret, totalRead );
-        } else if( packedBlobMessage['3'] !== undefined ) {
-          zlib.unzip(packedBlobMessage['3'][0],function(err,buffer){
-            var unpackedBlobMessage = readMessage( buffer );
+        } else if( packedBlobMessage.hasField(3) ) {
+          zlib.unzip(packedBlobMessage.val(3),function(err,buffer){
+            var unpackedBlobMessage = new Message( buffer );
             ret['blob'] = unpackedBlobMessage;
             callback( ret, totalRead );
           });
@@ -145,49 +147,52 @@ function readRepeated(buf){
 }
 
 function StringTable(message){
-  this.data = message['1']
+  this.data = message.vals(1)
   this.getString = function(i){
     return this.data[i].toString();
   }
 }
 
 function DenseInfo(message) {
-  this.version = readRepeated( message['1'][0] );
-  this.timestamp = readRepeated( message['2'][0] );
-  this.changeset = readRepeated( message['3'][0] );
-  this.uid = readRepeated( message['4'][0] );
-  this.user_sid = readRepeated( message['5'][0] );
+  this.version = readRepeated( message.val(1) );
+  this.timestamp = readRepeated( message.val(2) );
+  this.changeset = readRepeated( message.val(3) );
+  this.uid = readRepeated( message.val(4) );
+  this.user_sid = readRepeated( message.val(5) );
 }
 
 function DenseNodes(message){
-  this.ids = readRepeated( message['1'][0] );
-  this.denseinfo = new DenseInfo( readMessage( message['5'][0] ) );
-  this.lat = readRepeated( message['8'][0] );
-  this.lon = readRepeated( message['9'][0] );
-  this.keys_vals = readRepeated( message['10'][0] );
-
-  console.log(this.keys_vals[3]);
+  this.ids = readRepeated( message.val(1) );
+  this.denseinfo = new DenseInfo( new Message( message.val(5) ) );
+  this.lat = readRepeated( message.val(8) );
+  this.lon = readRepeated( message.val(9) );
+  this.keys_vals = readRepeated( message.val(10) );
 }
 
 function PrimitiveGroup(message){
-  this.dense = new DenseNodes( readMessage( message['2'][0] ) )
+  this.dense = new DenseNodes( new Message( message.val(2) ) )
 }
 
 function OSMData(fb){
-  if( fb['header']['1'].toString() !== "OSMData" ) {
+  if( fb['header'].val(1).toString() !== "OSMData" ) {
     throw "Not an OSMData fileblock";
   }
 
-  this.stringtable = new StringTable( readMessage( fb['blob']['1'][0] ) );
-  this.primitivegroup = new PrimitiveGroup( readMessage( fb['blob']['2'][0] ) );
+  this.stringtable = new StringTable( new Message( fb['blob'].val(1) ) );
+  this.primitivegroup = new PrimitiveGroup( new Message( fb['blob'].val(2) ) );
 }
 
-fs.open( "/storage/maps/boston.osm.pbf", "r", function(err,fd) {
-  readFileblock(fd, 0, function(fb,bytesRead){
-    readFileblock(fd, bytesRead, function(fb,bytesRead){
-      var osmdata = new OSMData(fb);
-      
-    });
-  });
+var path="/storage/maps/boston.osm.pbf";
+fs.open( path, "r", function(err,fd) {
+  var stats = fs.statSync( path );
+
+  var offset=0;
+  var onblobread = function(fb,bytesRead){
+    offset += bytesRead;
+    if(offset==stats.size)
+      return;
+    readFileblock(fd,offset,onblobread);
+  }
+  onblobread(null,0);
 });
 
