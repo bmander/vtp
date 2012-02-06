@@ -127,25 +127,36 @@ function Fileblock(fd, fileoffset){
     });
   }
 
+  this.convertPayloadMessage = function(payload){
+    var messageType={"OSMHeader":HeaderBlock,
+                     "OSMData":PrimitiveBlock};
+
+    return new messageType[this.header.type](payload);
+  }
+
+  this.readPayload = function(callback){
+    // read the blob payload
+    var blobbuf = new Buffer(metathis.payloadsize);
+    fs.read(fd,blobbuf,0,metathis.payloadsize,metathis.fileoffset+metathis.headersize+4,function(err,bytesRead,buffer){
+
+      var packedBlobMessage = new Message( blobbuf );
+
+      if( packedBlobMessage.hasField(1) ) {
+        metathis.payload=metathis.convertPayloadMessage(new Message(packedBlobMessage.val(1)));
+        callback( metathis );
+      } else if( packedBlobMessage.hasField(3) ) {
+        zlib.unzip(packedBlobMessage.val(3),function(err,buffer){
+          var unpackedBlobMessage = new Message( buffer );
+          metathis.payload = metathis.convertPayloadMessage(unpackedBlobMessage);
+          callback( metathis );
+        });
+      }
+    });
+  }
+
   this.read = function(callback){
     this.readHeader(function(fb){
-      // read the blob payload
-      var blobbuf = new Buffer(metathis.payloadsize);
-      fs.read(fd,blobbuf,0,metathis.payloadsize,metathis.fileoffset+metathis.headersize+4,function(err,bytesRead,buffer){
-
-        var packedBlobMessage = new Message( blobbuf );
-
-        if( packedBlobMessage.hasField(1) ) {
-          metathis.payload=new Message(packedBlobMessage.val(1));
-          callback( metathis );
-        } else if( packedBlobMessage.hasField(3) ) {
-          zlib.unzip(packedBlobMessage.val(3),function(err,buffer){
-            var unpackedBlobMessage = new Message( buffer );
-            metathis.payload = unpackedBlobMessage;
-            callback( metathis );
-          });
-        }
-      });
+      metathis.readPayload(callback);
     });
   }
 }
@@ -188,16 +199,16 @@ function DenseNodes(message){
 }
 
 function PrimitiveGroup(message){
-  this.dense = new DenseNodes( new Message( message.val(2) ) )
+  if(message.hasField(2))
+    this.dense = new DenseNodes( new Message( message.val(2) ) )
 }
 
-function OSMData(fb){
-  if( fb['header'].val(1).toString() !== "OSMData" ) {
-    throw "Not an OSMData fileblock";
-  }
+function PrimitiveBlock(message){
+  this.stringtable = new StringTable( new Message( message.val(1) ) );
+  this.primitivegroup = new PrimitiveGroup( new Message( message.vals(2)[0] ) );
+}
 
-  this.stringtable = new StringTable( new Message( fb['blob'].val(1) ) );
-  this.primitivegroup = new PrimitiveGroup( new Message( fb['blob'].val(2) ) );
+function HeaderBlock(message){
 }
 
 function FileBlockFile(path){
@@ -216,7 +227,7 @@ function FileBlockFile(path){
           return;
 
         var fileblock = new Fileblock(fd,offset);
-        fileblock.read( onblobread );
+        fileblock.readHeader( onblobread );
       }
       onblobread(null,0);
     });
@@ -225,6 +236,13 @@ function FileBlockFile(path){
 
 var path="/storage/maps/boston.osm.pbf";
 var fileblockfile = new FileBlockFile(path);
+
+var i=0;
 fileblockfile.read(function(fb){
-  console.log(fb.header);
-})
+  i++;
+  if(i==807){
+    fb.readPayload(function(fb){
+      console.log(fb,fb.payload.stringtable.getString(3));
+    });
+  }
+});
