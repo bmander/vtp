@@ -119,17 +119,17 @@ function DenseNodes(message){
       var keysvals = new DenseKeysVals( this.message.val(10) );
       var keyval = keysvals.next();
     }else{
-      var keyvals=null;
+      var keysvals=null;
     }
    
-    onnode([id,lat,lon,keyval]);
+    onnode({id:id,lat:lat,lon:lon,keyval:keyval});
  
     while( ids.more() ) {
       id = ids.next(true)+id;
       lat = lats.next(true)/10000000+lat;
       lon = lons.next(true)/10000000+lon;
-      keyval = keyvals ? keysvals.next() : null;
-      onnode( [id,lat,lon,keyval] );
+      keyval = keysvals ? keysvals.next() : null;
+      onnode({id:id,lat:lat,lon:lon,keyval:keyval});
     }
   }
 }
@@ -211,21 +211,3 @@ function FileBlockFile(path){
 }
 
 exports.FileBlockFile = FileBlockFile;
-
-var path="/storage/maps/boston.osm.pbf";
-var fileblockfile = new FileBlockFile(path);
-
-var i=0;
-fileblockfile.read(function(fb){
-  if(fb.header.type==="OSMData"){
-    fb.readPayload(function(fb){
-      console.log( fb.header );
-      if(fb.payload.primitivegroup.dense){
-        fb.payload.primitivegroup.dense.nodesSync(function(node){
-        });
-      } else {
-        console.log( fb.payload.primitivegroup.ways.length );
-      }
-    });
-  }
-});
