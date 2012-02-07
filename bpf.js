@@ -16,7 +16,12 @@ function get_wire_type(val){
 function get_field_number(val){
   return val>>3;
 }
-
+function decode_signed(val){
+  //zigzag encoding
+  if(val%2==0)
+    return val/2;
+  return -((val+1)/2);
+}
 
 function readVarint( ary, offset, callback ){
   var i=offset;
@@ -161,6 +166,37 @@ function Fileblock(fd, fileoffset){
   }
 }
 
+function DenseData(buf){
+  this.buf=buf;
+  this.i=0;
+  this.more = function(){
+    return this.i<this.buf.length;
+  }
+  this.next = function(){
+    var valdef = readVarint(this.buf,this.i);
+    this.i += valdef[1];
+    return valdef[0];
+  }
+}
+
+function DenseKeysVals(buf){
+  this.densedata = new DenseData(buf);
+  this.more = function(){
+    return this.densedata.more();
+  }
+  this.next = function(){
+    var ret = []
+
+    while(true){
+      var k=this.densedata.next();
+      if(k==0)
+        return ret;
+      var v=this.densedata.next();
+      ret.push([k,v]);
+    }  
+  }
+}
+
 function readRepeated(buf){
   ret = []
 
@@ -191,16 +227,82 @@ function DenseInfo(message) {
 }
 
 function DenseNodes(message){
-  this.ids = readRepeated( message.val(1) );
-  this.denseinfo = new DenseInfo( new Message( message.val(5) ) );
-  this.lat = readRepeated( message.val(8) );
-  this.lon = readRepeated( message.val(9) );
-  this.keys_vals = readRepeated( message.val(10) );
+  this.message = message;
+  this.nodesSync = function(onnode){
+    if(!this.message.hasField(1))
+      return; 
+
+    var ids = new DenseData( this.message.val(1) );
+    var id = decode_signed(ids.next());
+
+    var lats = new DenseData( this.message.val(8) );
+    var lat = decode_signed(lats.next())/10000000;
+
+    var lons = new DenseData( this.message.val(9) );
+    var lon = decode_signed(lons.next())/10000000;
+
+    if(this.message.hasField(10)){
+      var keysvals = new DenseKeysVals( this.message.val(10) );
+      var keyval = keysvals.next();
+    }else{
+      var keyvals=null;
+    }
+   
+    onnode([id,lat,lon,keyval]);
+ 
+    while( ids.more() ) {
+      id = decode_signed(ids.next())+id;
+      lat = decode_signed(lats.next())/10000000+lat;
+      lon = decode_signed(lons.next())/10000000+lon;
+      keyval = keyvals ? keysvals.next() : null;
+      onnode( [id,lat,lon,keyval] );
+    }
+  }
+}
+
+function Way(message){
+  this.message=message;
+  
+  this.id = message.val(1);
+  this.keysvals = function(){
+    var keys = new DenseData( message.val(2) );
+    var vals = new DenseData( message.val(3) );
+
+    ret = [];
+    while(keys.more()){
+      ret.push( [keys.next(), vals.next()] );
+    }
+    return ret;
+  }
+  this.refs = function(){
+    ret = [];
+    var denserefs = new DenseData( message.val(8) );
+    if(denserefs.more()){
+      var ref = denserefs.next();
+      ret.push(ref);
+    }
+
+    while(denserefs.more()){
+      var ref = decode_signed( denserefs.next() )+ref;
+      ret.push( ref );
+    }
+    return ret;
+  }
+  
 }
 
 function PrimitiveGroup(message){
-  if(message.hasField(2))
-    this.dense = new DenseNodes( new Message( message.val(2) ) )
+  this.dense=null;
+  if( message.hasField(2) )
+    this.dense = new DenseNodes( new Message( message.val(2) ) );
+
+  this.ways=[];
+  if( message.hasField(3) ){
+    var waymessages = message.vals(3);
+    for(var i=0; i<waymessages.length; i++) {
+      this.ways.push( new Way( new Message( waymessages[i] ) ) );
+    }
+  }
 }
 
 function PrimitiveBlock(message){
@@ -239,10 +341,15 @@ var fileblockfile = new FileBlockFile(path);
 
 var i=0;
 fileblockfile.read(function(fb){
-  i++;
-  if(i==807){
+  if(fb.header.type==="OSMData"){
     fb.readPayload(function(fb){
-      console.log(fb,fb.payload.stringtable.getString(3));
+      console.log( fb.header );
+      if(fb.payload.primitivegroup.dense){
+        fb.payload.primitivegroup.dense.nodesSync(function(node){
+        });
+      } else {
+        console.log( fb.payload.primitivegroup.ways.length );
+      }
     });
   }
 });
