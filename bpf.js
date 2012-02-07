@@ -72,21 +72,8 @@ function Fileblock(fd, fileoffset){
   }
 }
 
-function DenseData(buf){
-  this.buf=buf;
-  this.i=0;
-  this.more = function(){
-    return this.i<this.buf.length;
-  }
-  this.next = function(){
-    var valdef = protobuf.readVarint(this.buf,this.i);
-    this.i += valdef[1];
-    return valdef[0];
-  }
-}
-
 function DenseKeysVals(buf){
-  this.densedata = new DenseData(buf);
+  this.densedata = new protobuf.DenseData(buf);
   this.more = function(){
     return this.densedata.more();
   }
@@ -103,20 +90,6 @@ function DenseKeysVals(buf){
   }
 }
 
-function readRepeated(buf){
-  ret = []
-
-  var i=0;
-  while(i<buf.length){
-    var valdef = protobuf.readVarint(buf,i);
-    var val=valdef[0];
-    ret.push( val );
-    i += valdef[1];
-  }
-
-  return ret;
-}
-
 function StringTable(message){
   this.data = message.vals(1)
   this.getString = function(i){
@@ -125,11 +98,6 @@ function StringTable(message){
 }
 
 function DenseInfo(message) {
-  this.version = readRepeated( message.val(1) );
-  this.timestamp = readRepeated( message.val(2) );
-  this.changeset = readRepeated( message.val(3) );
-  this.uid = readRepeated( message.val(4) );
-  this.user_sid = readRepeated( message.val(5) );
 }
 
 function DenseNodes(message){
@@ -138,14 +106,14 @@ function DenseNodes(message){
     if(!this.message.hasField(1))
       return; 
 
-    var ids = new DenseData( this.message.val(1) );
-    var id = protobuf.decode_signed(ids.next());
+    var ids = new protobuf.DenseData( this.message.val(1) );
+    var id = ids.next(true);
 
-    var lats = new DenseData( this.message.val(8) );
-    var lat = protobuf.decode_signed(lats.next())/10000000;
+    var lats = new protobuf.DenseData( this.message.val(8) );
+    var lat = lats.next(true)/10000000;
 
-    var lons = new DenseData( this.message.val(9) );
-    var lon = protobuf.decode_signed(lons.next())/10000000;
+    var lons = new protobuf.DenseData( this.message.val(9) );
+    var lon = lons.next(true)/10000000;
 
     if(this.message.hasField(10)){
       var keysvals = new DenseKeysVals( this.message.val(10) );
@@ -157,9 +125,9 @@ function DenseNodes(message){
     onnode([id,lat,lon,keyval]);
  
     while( ids.more() ) {
-      id = protobuf.decode_signed(ids.next())+id;
-      lat = protobuf.decode_signed(lats.next())/10000000+lat;
-      lon = protobuf.decode_signed(lons.next())/10000000+lon;
+      id = ids.next(true)+id;
+      lat = lats.next(true)/10000000+lat;
+      lon = lons.next(true)/10000000+lon;
       keyval = keyvals ? keysvals.next() : null;
       onnode( [id,lat,lon,keyval] );
     }
@@ -171,8 +139,8 @@ function Way(message){
   
   this.id = message.val(1);
   this.keysvals = function(){
-    var keys = new DenseData( message.val(2) );
-    var vals = new DenseData( message.val(3) );
+    var keys = new protobuf.DenseData( message.val(2) );
+    var vals = new protobuf.DenseData( message.val(3) );
 
     ret = [];
     while(keys.more()){
@@ -182,14 +150,14 @@ function Way(message){
   }
   this.refs = function(){
     ret = [];
-    var denserefs = new DenseData( message.val(8) );
+    var denserefs = new protobuf.DenseData( message.val(8) );
     if(denserefs.more()){
       var ref = denserefs.next();
       ret.push(ref);
     }
 
     while(denserefs.more()){
-      var ref = protobuf.decode_signed( denserefs.next() )+ref;
+      var ref = denserefs.next(true)+ref;
       ret.push( ref );
     }
     return ret;

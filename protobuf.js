@@ -21,7 +21,7 @@ function decode_signed(val){
   return -((val+1)/2);
 }
 
-function readVarint( ary, offset, callback ){
+function readVarint( ary, offset ){
   var i=offset;
   var bytes = [strip_msb(ary[i])];
   while( more_bytes(ary[i]) && i<ary.length-1 ){
@@ -60,6 +60,23 @@ function readField(buf,offset){
   return [field_number, val, nread];
 }
 
+function DenseData(buf){
+  this.buf=buf;
+  this.i=0;
+  this.more = function(){
+    return this.i<this.buf.length;
+  }
+  this.next = function(signed){
+    var valdef = readVarint(this.buf,this.i);
+    this.i += valdef[1];
+    if(signed===true)
+      return decode_signed(valdef[0]);
+    else
+      return valdef[0];
+  }
+}
+
+
 function Message(buf){
   this.fields = {}
 
@@ -94,12 +111,6 @@ function Message(buf){
   }
 }
 
-
-exports.more_bytes=more_bytes;
-exports.strip_msb=strip_msb;
-exports.get_wire_type=get_wire_type;
-exports.get_field_number=get_field_number;
 exports.decode_signed=decode_signed;
-exports.readVarint=readVarint;
-exports.readField=readField;
 exports.Message=Message;
+exports.DenseData=DenseData;
