@@ -210,6 +210,8 @@ function FileBlockFile(path){
   }
 }
 
+exports.FileBlockFile = FileBlockFile;
+
 var path="/storage/maps/boston.osm.pbf";
 var fileblockfile = new FileBlockFile(path);
 
