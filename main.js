@@ -1,6 +1,22 @@
 var pbf = require("./pbf.js");
 var mongodb = require('mongodb');
 
+
+var path="/storage/maps/boston.osm.pbf";
+var fileblockfile = new pbf.FileBlockFile(path);
+
+console.log( "fileblockfile", fileblockfile );
+
+fileblockfile.fileblock(1,function(fileblock){
+  console.log(fileblock.header);
+  fileblock.readPayload(function(payload){
+    payload.nodes(function(node){
+      console.log(node);
+    });
+  });
+});
+
+/*
 var server = new mongodb.Db('test', new mongodb.Server("127.0.0.1", 27017, {}))
 server.open(function(err, client) {
   var collection = new mongodb.Collection(client,"test_insert");
@@ -37,3 +53,4 @@ function insertStuffIntoCollection(collection){
     }
   });
 }
+*/

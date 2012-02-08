@@ -54,12 +54,12 @@ function Fileblock(fd, fileoffset){
 
       if( packedBlobMessage.hasField(1) ) {
         metathis.payload=metathis.convertPayloadMessage(new protobuf.Message(packedBlobMessage.val(1)));
-        callback( metathis );
+        callback( metathis.payload );
       } else if( packedBlobMessage.hasField(3) ) {
         zlib.unzip(packedBlobMessage.val(3),function(err,buffer){
           var unpackedBlobMessage = new protobuf.Message( buffer );
           metathis.payload = metathis.convertPayloadMessage(unpackedBlobMessage);
-          callback( metathis );
+          callback( metathis.payload );
         });
       }
     });
@@ -92,7 +92,7 @@ function DenseKeysVals(buf){
 
 function StringTable(message){
   this.data = message.vals(1)
-  this.getString = function(i){
+  this.get = function(i){
     return this.data[i].toString();
   }
 }
@@ -132,6 +132,13 @@ function DenseNodes(message){
       onnode({id:id,lat:lat,lon:lon,keyval:keyval});
     }
   }
+
+  var metathis=this;
+  this.nodes = function(onnode){
+    var func = function(){metathis.nodesSync(onnode);};
+    process.nextTick(func);
+  }
+  
 }
 
 function Way(message){
@@ -182,6 +189,20 @@ function PrimitiveGroup(message){
 function PrimitiveBlock(message){
   this.stringtable = new StringTable( new protobuf.Message( message.val(1) ) );
   this.primitivegroup = new PrimitiveGroup( new protobuf.Message( message.vals(2)[0] ) );
+
+  var metathis=this;
+  this.nodes = function(callback){
+    this.primitivegroup.dense.nodes(function(node){
+      var keyval={};
+      for(var i=0; i<node.keyval.length; i++){
+        var key = metathis.stringtable.get(node.keyval[i][0]);
+        var val = metathis.stringtable.get(node.keyval[i][1]);
+        keyval[key]=val;
+      }
+      node.keyval=keyval;
+      callback(node); 
+    });
+  }
 }
 
 function HeaderBlock(message){
@@ -206,6 +227,16 @@ function FileBlockFile(path){
         fileblock.readHeader( onblobread );
       }
       onblobread(null,0);
+    });
+  }
+
+  this.fileblock = function(n,callback){
+    var i=0;
+    this.read(function(fileblock){
+      if(n==i){
+        callback(fileblock);
+      } 
+      i++;
     });
   }
 }
