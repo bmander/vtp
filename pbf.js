@@ -102,7 +102,7 @@ function DenseInfo(message) {
 
 function DenseNodes(message){
   this.message = message;
-  this.nodesSync = function(onnode){
+  this.nodesSync = function(onnode,onfinish){
     if(!this.message.hasField(1))
       return; 
 
@@ -131,11 +131,13 @@ function DenseNodes(message){
       keyval = keysvals ? keysvals.next() : null;
       onnode({id:id,lat:lat,lon:lon,keyval:keyval});
     }
+
+    onfinish();
   }
 
   var metathis=this;
-  this.nodes = function(onnode){
-    var func = function(){metathis.nodesSync(onnode);};
+  this.nodes = function(onnode,onfinish){
+    var func = function(){metathis.nodesSync(onnode,onfinish);};
     process.nextTick(func);
   }
   
@@ -146,10 +148,13 @@ function Way(message){
   
   this.id = message.val(1);
   this.keysvals = function(){
+    ret = [];
+    if(!message.hasField(2) || !message.hasField(3))
+      return ret;
+
     var keys = new protobuf.DenseData( message.val(2) );
     var vals = new protobuf.DenseData( message.val(3) );
 
-    ret = [];
     while(keys.more()){
       ret.push( [keys.next(), vals.next()] );
     }
@@ -177,12 +182,20 @@ function PrimitiveGroup(message){
   if( message.hasField(2) )
     this.dense = new DenseNodes( new protobuf.Message( message.val(2) ) );
 
-  this.ways=[];
-  if( message.hasField(3) ){
-    var waymessages = message.vals(3);
-    for(var i=0; i<waymessages.length; i++) {
-      this.ways.push( new Way( new protobuf.Message( waymessages[i] ) ) );
+  this.waysSync = function(onway,onfinish){
+    if( message.hasField(3) ){
+      var waymessages = message.vals(3);
+      for(var i=0; i<waymessages.length; i++) {
+        onway( new Way( new protobuf.Message( waymessages[i] ) ) );
+      }
     }
+    onfinish();
+  }
+
+  var metathis=this;
+  this.ways = function(onway,onfinish){
+    var foo = function(){metathis.waysSync(onway,onfinish);}
+    process.nextTick(foo);
   }
 }
 
@@ -191,17 +204,43 @@ function PrimitiveBlock(message){
   this.primitivegroup = new PrimitiveGroup( new protobuf.Message( message.vals(2)[0] ) );
 
   var metathis=this;
-  this.nodes = function(callback){
+  this.nodes = function(callback,onfinish){
+    if(this.primitivegroup.dense===null){
+      onfinish();
+      return;
+    }
+
     this.primitivegroup.dense.nodes(function(node){
       var keyval={};
-      for(var i=0; i<node.keyval.length; i++){
-        var key = metathis.stringtable.get(node.keyval[i][0]);
-        var val = metathis.stringtable.get(node.keyval[i][1]);
-        keyval[key]=val;
+      if(node.keyval!==undefined && node.keyval!==null){
+        for(var i=0; i<node.keyval.length; i++){
+          var key = metathis.stringtable.get(node.keyval[i][0]);
+          var val = metathis.stringtable.get(node.keyval[i][1]);
+          keyval[key]=val;
+        }
       }
       node.keyval=keyval;
       callback(node); 
-    });
+    },onfinish);
+  }
+
+  this.ways = function(onway,onfinish){
+    this.primitivegroup.ways(function(way){
+      var retway={};
+      retway.id=way.id;
+
+      var rawkeysvals=way.keysvals();
+      retway.keysvals={}
+      for(var i=0; i<rawkeysvals.length; i++){
+        var key = metathis.stringtable.get(rawkeysvals[i][0]);
+        var val = metathis.stringtable.get(rawkeysvals[i][1]);
+        retway.keysvals[key]=val;
+      }
+
+      retway.refs = way.refs();
+
+      onway(retway);
+    },onfinish);    
   }
 }
 
@@ -209,7 +248,7 @@ function HeaderBlock(message){
 }
 
 function FileBlockFile(path){
-  this.read = function(callback){
+  this.read = function(onblock,onfinish){
     fs.open( path, "r", function(err,fd) {
       var stats = fs.statSync( path );
 
@@ -217,11 +256,14 @@ function FileBlockFile(path){
       var onblobread = function(fb){
         if(fb){
           offset += fb.size;
-          callback(fb);
+          onblock(fb);
         }
 
-        if(offset==stats.size)
+        if(offset==stats.size) {
+          if(onfinish!==undefined)
+            onfinish();
           return;
+        }
 
         var fileblock = new Fileblock(fd,offset);
         fileblock.readHeader( onblobread );
@@ -241,4 +283,34 @@ function FileBlockFile(path){
   }
 }
 
+function PBFFile(fileblockfile){
+  this.nodes = function(onnode,onfinish){
+    var stillreading=true;
+    var nstarted=0;
+    var nfinished=0;
+
+    // for each file block
+    fileblockfile.read(function(fileblock){
+      if(fileblock.header.type==="OSMData"){
+        nstarted += 1;
+        fileblock.readPayload(function(payload){
+
+          // for each node in each file block
+          // call the onnode callback
+          // when finished, check if it is the last node ever; if so, call the onfinish callback
+          payload.nodes(onnode, function(){
+            nfinished += 1;
+            if(!stillreading && (nfinished==nstarted)){
+              onfinish();
+            }
+          });
+        });
+      }  
+    },function(){
+      stillreading=false;
+    });
+  }
+}
+
 exports.FileBlockFile = FileBlockFile;
+exports.PBFFile = PBFFile;
