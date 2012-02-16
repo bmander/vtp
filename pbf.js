@@ -122,17 +122,26 @@ function DenseNodes(message){
       var keysvals=null;
     }
    
-    onnode({id:id,lat:lat,lon:lon,keyval:keyval});
+    var progress = onnode({id:id,lat:lat,lon:lon,keyval:keyval});
+    if( progress===false ){
+      onfinish(false);
+      return false;
+    }
  
     while( ids.more() ) {
       id = ids.next(true)+id;
       lat = lats.next(true)/10000000+lat;
       lon = lons.next(true)/10000000+lon;
       keyval = keysvals ? keysvals.next() : null;
-      onnode({id:id,lat:lat,lon:lon,keyval:keyval});
+      progress = onnode({id:id,lat:lat,lon:lon,keyval:keyval});
+      if( progress===false ){
+        onfinish(false);
+        return false;
+      }
     }
 
-    onfinish();
+    onfinish(true);
+
   }
 
   var metathis=this;
@@ -220,7 +229,7 @@ function PrimitiveBlock(message){
         }
       }
       node.keyval=keyval;
-      callback(node); 
+      return callback(node); //if this callback returns false, dense.nodes stops iterating and returns onfinish(false)
     },onfinish);
   }
 
@@ -289,19 +298,28 @@ function PBFFile(fileblockfile){
     var nstarted=0;
     var nfinished=0;
 
-    // for each file block
+    // for each file block read just the header
     fileblockfile.read(function(fileblock){
+
+      // if it's a data block
       if(fileblock.header.type==="OSMData"){
+
+        // read the payload
         nstarted += 1;
         fileblock.readPayload(function(payload){
 
           // for each node in each file block
           // call the onnode callback
-          // when finished, check if it is the last node ever; if so, call the onfinish callback
-          payload.nodes(onnode, function(){
+          payload.nodes(onnode, function(normalexit){
+            if(normalexit===false){
+              onfinish(false);
+              return false;
+            }
+
+            // when finished, check if it is the last node ever; if so, call the onfinish callback
             nfinished += 1;
             if(!stillreading && (nfinished==nstarted)){
-              onfinish();
+              onfinish(true);
             }
           });
         });
