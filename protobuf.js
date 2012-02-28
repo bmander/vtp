@@ -31,7 +31,7 @@ function readVarint( ary, offset ){
 
   var val = 0;
   for(i=0; i<bytes.length; i++){
-    val += bytes[i]<<(7*i);
+    val += bytes[i]*Math.pow(2,(7*i));  //if you do a bit shift, unexpected negative numbers result sometimes
   }
   return [val,i];
 }
@@ -67,7 +67,8 @@ function DenseData(buf){
     return this.i<this.buf.length;
   }
   this.next = function(signed){
-    var valdef = readVarint(this.buf,this.i);
+    var valdef;
+    valdef = readVarint(this.buf,this.i);
     this.i += valdef[1];
     if(signed===true)
       return decode_signed(valdef[0]);

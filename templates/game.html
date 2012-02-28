@@ -1,0 +1,758 @@
+<html>
+  <head>
+    <!--<script src="/static/js/processing.js"></script>-->
+    <script src="/static/js/jquery.js"></script>
+    <!--<script src="/static/js/socket.io.js"></script>-->
+    <script type="text/javascript">
+      var canvas;
+      var ctx;
+
+      var pmouseX=null;
+      var pmouseY=null;
+
+      var ll=0;
+      var rr=1000;
+      var tt=0;
+      var bb=1000;
+
+      var landcover;
+      var crop;
+
+      var people = []
+      var currPerson=0;
+
+      var commanddiv = document.getElementById("commands");
+
+      function dist(x1,y1,x2,y2) {
+        return Math.sqrt( Math.pow(x1-x2,2)+Math.pow(y1-y2,2) );
+      }
+      function mag(x,y){
+        return Math.sqrt( Math.pow(x,2)+Math.pow(y,2) );
+      }
+
+      function Menu(div){
+        this.div = div;
+        this.buttons = {};
+
+        this.addButton = function(button){
+          this.buttons[button.shortcut]=button;
+        }
+
+        this.registerButton = function( label, shortcut, onselect, onunselect ) {
+          var button = new Button(label, shortcut);
+          button.onselect = onselect;
+          button.onunselect = onunselect;
+          this.addButton(button);
+        }
+
+        this.fillMenu = function(){
+          for(var key in this.buttons){
+            this.div.appendChild( this.buttons[key].div );
+          }
+        }
+
+        this.clearMenu = function(){
+          this.div.innerHTML="";
+        }
+
+        this.unselectAllBut = function(pass){
+          for(var key in this.buttons){
+            if(key!==pass)
+              this.buttons[key].unselect();
+          }
+        }
+
+        this.select = function(shortcut){
+          this.buttons[shortcut].select();
+        }
+
+        this.unselect = function(shortcut){
+          this.buttons[shortcut].unselect();
+        }
+      }
+
+      function Button(label, shortcut) {
+        this.shortcut = shortcut;
+        //create element for button
+        this.div = document.createElement('div');
+        this.div.innerHTML=label;
+        this.div.style.width=100;
+        this.div.style.height=40;
+        this.div.style.setProperty("background-color","yellow");
+        this.div.style.setProperty("margin-left","2px");
+
+        this.div.button = this;
+        this.selected = false;
+
+        this.onselect = null;
+        this.onunselect = null;
+
+        this.unselect = function() {
+            $(this.div).css('outline','#000000 none 2px');
+            if(this.onunselect){
+              this.onunselect();
+            }
+            this.selected=false;
+        }
+
+        this.select = function() {
+            $(this.div).css('outline','#000000 solid 2px');
+            if(this.onselect){
+              this.onselect();
+            }
+            this.selected=true;
+        }
+
+        this.toggle = function() {
+          if(!this.selected) {
+            this.select();
+          } else {
+            this.unselect();
+          }
+        }
+
+        $(this.div).click(function(ev){
+          this.button.toggle();
+        });
+
+      }
+
+      function Person(x,y,menudiv) {
+        this.RADIUS = 0.25
+        this.x = x;
+        this.y = y;
+        this.selected = false;
+        this.fat = 0;
+
+        this.command = null;
+
+        this.waypoints = [];
+        this.currWaypoint=0;
+
+        this.menu = new Menu(menudiv);
+
+        var superthis=this;
+        this.menu.registerButton( "(g)o", "g",
+        function(){
+          superthis.menu.unselectAllBut("g");
+          superthis.command = "go";
+        }, function() {
+          superthis.waypoints=[];
+          superthis.currWaypoint=0;
+          superthis.command = null;
+        });
+
+        this.menu.registerButton( "(r)oute", "r",
+        function() {
+          superthis.menu.unselectAllBut("r");
+          superthis.command = "route";
+        }, function() {
+          superthis.waypoints=[];
+          superthis.currWaypoint=0;
+          superthis.command = null;
+        })
+        this.menu.registerButton( "(u)nselect", "u",
+        function(){
+          superthis.menu.unselect("u");
+          superthis.unselect();
+        }, function() {
+        });
+
+
+        this.draw = function(ctx) {
+          ctx.beginPath();
+          ctx.arc(this.x,this.y,this.RADIUS,0,2*Math.PI,false);
+          if( this.selected ){
+            ctx.fillStyle = "#8ED6FF";
+            ctx.fill();
+          }
+          ctx.lineWidth=0.05;
+          ctx.stroke();
+
+          if(this.command==="go"){
+            if( this.currWaypoint <= this.waypoints.length ) {
+              ctx.beginPath();
+              ctx.moveTo(this.x, this.y);
+              for(var i=this.currWaypoint; i<this.waypoints.length; i++) {
+                wp = this.waypoints[i];
+                ctx.lineTo(wp[0],wp[1]);
+              }
+              ctx.stroke();
+            }
+          } else if(this.command==="route") {
+            if( this.waypoints.length > 1 ) {
+              ctx.beginPath();
+              ctx.moveTo(this.waypoints[0][0], this.waypoints[0][1]);
+              for(var i=1; i<this.waypoints.length; i++){
+                ctx.lineTo(this.waypoints[i][0], this.waypoints[i][1]);
+              }
+              ctx.lineTo(this.waypoints[0][0], this.waypoints[0][1]);
+              ctx.stroke();
+            }
+          }
+        }
+
+        this.select=function() {
+          this.menu.fillMenu();
+          this.selected=true;
+        }
+        this.unselect=function() {
+          this.menu.clearMenu();
+          this.selected=false;
+        }
+
+        this.attemptSelect = function(x,y){
+          var dd = dist(this.x,this.y,x,y);
+          if( dd <= this.RADIUS ) {
+
+            if(this.selected) {
+              this.unselect();
+            } else {
+              this.select();
+            }
+
+            return true;
+          }
+          return false;
+        }
+
+        this.startRoute = function() {
+          this.waypoints = []
+          this.currWaypoint=0
+          this.waypoints.push( [this.x, this.y] );
+        }
+
+        this.addWaypoint = function(x,y) {
+          this.waypoints.push( [x,y] );
+        }
+
+        this.advance = function(v,dt) {
+          if( this.waypoints.length < 1 ) {
+            return;
+          }
+
+          var ds = v*dt; // m/s * s = m 
+
+          while( ds > 0 ) {
+            if( this.currWaypoint >= this.waypoints.length ) {
+              return;
+            }
+
+            // get the way point
+            var wp = this.waypoints[this.currWaypoint];
+
+            // vector and distance to next goal
+            var goal = [wp[0]-this.x,wp[1]-this.y];
+            var goaldist = mag(goal[0], goal[1]);
+
+            if(goaldist > ds) {
+              var goaldir = [goal[0]/goaldist, goal[1]/goaldist];
+              this.x += goaldir[0]*ds;
+              this.y += goaldir[1]*ds;
+              break;
+            } else {
+              this.x = wp[0];
+              this.y = wp[1]
+              ds -= goaldist;
+              this.currWaypoint += 1;
+              
+              if( this.command==="route" ) {
+                this.currWaypoint %= this.waypoints.length;
+              } else if( this.command==="go") {
+                if(this.currWaypoint >= this.waypoints.length) {
+                  this.menu.unselect("g");
+                  this.command=null;
+                }
+              }
+
+            }
+
+            if(goaldist==0){
+              return;
+            }
+          }
+          
+        }
+
+        this.pick = function( crop ) {
+          this.fat += crop.pick(this.x,this.y);
+        }
+
+        this.divide = function() {
+          if(this.fat >= 25){
+            people.push( new Person(this.x+2,this.y,commanddiv) );
+            this.fat=0;
+          }
+        }
+
+        this.commandpoint = function(x,y) {
+         
+          if(this.command==null){
+            this.unselect();
+          }
+
+          if(this.command==="go"){
+            this.addWaypoint( x, y );
+          }
+          if(this.command==="route"){
+            this.addWaypoint( x, y );
+          }
+
+        }
+
+        this.commandkey = function(key){
+          var button = this.menu.buttons[key]
+          if(button)
+            button.toggle();
+        }
+      }
+
+      function Path(ctx){
+        this.ctx = ctx;
+        this.pts = [];
+        this.draw = function() {
+          if( this.pts.length < 2 )
+            return;
+
+          this.ctx.beginPath();
+          this.ctx.moveTo( this.pts[0][0], this.pts[0][1] );
+          for(var i=1; i<this.pts.length; i++) {
+            this.ctx.lineTo( this.pts[i][0], this.pts[i][1] );
+          }
+          this.ctx.stroke();
+        }
+        this.drawLast = function() {
+          if( this.pts.length < 2 )
+            return;
+
+          this.ctx.beginPath();
+          this.ctx.moveTo( this.pts[this.pts.length-2][0], this.pts[this.pts.length-2][1] );
+          this.ctx.lineTo( this.pts[this.pts.length-1][0], this.pts[this.pts.length-1][1] );
+          this.ctx.stroke();
+        }
+
+      }
+
+      function Landcover(ctx,imgsrc,xres,yres,onload){
+        this.types = {WATER:1,
+        WETLAND:2,
+        WETLAND_WOODY:3,
+        OPEN:4,
+        LOW:5,
+        MEDIUM:6,
+        HIGH:7,
+        GRASS:8,
+        TREE_MIXED:9,
+        TREE_EVERGREEN:10}
+
+        this.colors = {}
+        this.colors[[73,109,163]]=this.types.WATER;
+        this.colors[[112,163,191]]=this.types.WETLAND;
+        this.colors[[186,216,237]]=this.types.WETLAND_WOODY;
+        this.colors[[224,204,204]]=this.types.OPEN;
+        this.colors[[219,153,130]]=this.types.LOW;
+        this.colors[[242,0,0]]=this.types.MEDIUM;
+        this.colors[[170,0,0]]=this.types.HIGH;
+        this.colors[[186,204,145]]=this.types.GRASS;
+        this.colors[[107,170,102]]=this.types.TREE_MIXED;
+        this.colors[[28,102,51]]=this.types.TREE_EVERGREEN;
+
+        this.ctx = ctx;
+        this.xres = xres;
+        this.yres = yres;
+
+        this.img = new Image();
+        var superthis=this;
+        this.img.onload=function(ev){
+          var cvs = document.createElement('canvas');
+          var ctx = cvs.getContext('2d');
+          ctx.drawImage(this,0,0,this.width,this.height);
+          superthis.imgdata = ctx.getImageData(0,0,this.width,this.height);
+
+          if(onload){
+            onload()
+          }
+        };
+        this.img.src=imgsrc;
+
+        this.draw = function() {
+            this.ctx.drawImage(this.img,0,0,this.img.width*this.xres,this.img.height*this.yres);
+        }
+
+        this.pixel = function(i){
+          return [this.imgdata.data[i*4], this.imgdata.data[i*4+1], this.imgdata.data[i*4+2]];
+        }
+
+        this.getIndex = function(x,y){
+          var imgx = Math.floor(x/this.xres);
+          var imgy = Math.floor(y/this.yres);
+
+          return imgy*this.img.width+imgx;
+        }
+
+        this.pick = function(x,y){
+          var index = this.getIndex(x,y);
+          return [ this.imgdata.data[index*4],this.imgdata.data[index*4+1],this.imgdata.data[index*4+2], this.imgdata.data[index*4+3] ]
+        }
+
+        this.classify = function(x,y){
+          var color = this.pick(x,y);
+          return this.colors[[color[0],color[1],color[2]]];
+        }
+
+      }
+
+      function Crop(landcover, mult) {
+        this.product = {};
+        this.product[landcover.types.WATER]=0;
+        this.product[landcover.types.WETLAND]=50;
+        this.product[landcover.types.WETLAND_WOODY]=50;
+        this.product[landcover.types.OPEN]=20;
+        this.product[landcover.types.LOW]=12;
+        this.product[landcover.types.MEDIUM]=8;
+        this.product[landcover.types.HIGH]=5;
+        this.product[landcover.types.GRASS]=25;
+        this.product[landcover.types.TREE_MIXED]=30;
+        this.product[landcover.types.TREE_EVERGREEN]=35;
+
+        this.landcover = landcover;
+        this.rates = []
+
+        this.cropwidth = this.landcover.img.width*mult;
+        this.cropheight = this.landcover.img.height*mult;
+        this.mult=mult;
+
+        for(var x=0; x<landcover.img.width; x++){
+          for(var y=0; y<landcover.img.height; y++) {
+            var i = landcover.img.width*y+x;
+            var color = landcover.pixel(i);
+            var type = landcover.colors[color];
+
+            for(var px=0; px<this.mult; px++){
+              for(var py=0; py<this.mult; py++) {
+                
+                var cropi = (y*this.mult+py)*this.cropwidth + (x*this.mult+px);
+                this.rates[cropi] = this.product[type];
+              }
+            }
+          }
+        }
+
+        this.yield = []
+        for(var i=0; i<this.rates.length; i++) {
+          this.yield[i]=1.9;
+        }
+
+        this.update = function(period) {
+          for(var i=0; i<this.yield.length; i++) {
+            if( this.yield[i] < 1 ) {
+              var baserate = this.rates[i]*period;
+              this.yield[i] += baserate*Math.random();
+            }
+          }
+        }
+
+        this.draw = function(ctx) {
+          //create temp canvas
+          var tmpcvs = document.createElement('canvas');
+          tmpcvs.width = this.landcover.img.width*this.mult;
+          tmpcvs.height = this.landcover.img.height*this.mult;
+          var tmpctx = tmpcvs.getContext("2d");
+          var id = tmpctx.getImageData(0,0,tmpcvs.width,tmpcvs.height);
+          for(var i=0; i<id.width*id.height; i++) {
+            if( this.yield[i] > 1 ) {
+              id.data[i*4]=230;
+              id.data[i*4+1]=247;
+              id.data[i*4+2]=35;
+              id.data[i*4+3]=255;
+            }
+          }
+          tmpctx.putImageData(id,0,0);
+
+          //draw it
+          ctx.drawImage( tmpcvs, 0, 0, id.width*this.landcover.xres/this.mult, id.height*this.landcover.yres/this.mult );
+        }
+
+        this.pick = function( x, y ) {
+          //var index = this.cropwidth*y*this.mult+x*this.mult;
+          var index = Math.floor(this.mult*x/this.landcover.xres + this.cropwidth*(this.mult*y/this.landcover.yres)); 
+          //var index = this.landcover.getIndex( x*mult, y*mult );
+          if( this.yield[index] > 1 ) {
+            this.yield[index]=0;
+            return 1;
+          } else {
+            return 0;
+          }
+        }
+
+      }
+
+      $(document).ready( function() {
+
+        commanddiv = document.getElementById("commands");
+
+        function apply_transform(){
+          ctx.setTransform(1,0,0,1,0,0);
+
+          var xscale = canvas.width/(rr-ll);
+          var yscale = canvas.height/(bb-tt);
+
+          ctx.translate( -ll*xscale, -tt*yscale );
+          ctx.scale(xscale,yscale);
+        }
+
+        function handle(delta, x, y) {
+
+          var scalefactor = Math.pow(1.1,-delta);
+
+          var newwidth = (rr-ll)*scalefactor;
+          var newheight = (bb-tt)*scalefactor;
+
+          var smidgex = x/canvas.width;
+          var smidgey = y/canvas.height;
+
+          var centerx = (rr-ll)*smidgex + ll;
+          var centery = (bb-tt)*smidgey + tt;
+
+          ll = centerx - newwidth*(smidgex);
+          rr = centerx + newwidth*(1-smidgex);
+          tt = centery - newheight*(smidgey);
+          bb = centery + newheight*(1-smidgey);
+
+          apply_transform();
+
+          redraw();
+        }
+
+        function wheel(event){
+          
+          if( event.target!=canvas )
+            return true;
+
+          var delta = 0;
+          if (!event)  // For IE. 
+            event = window.event;
+          if (event.wheelDelta) { // IE/Opera. 
+            delta = event.wheelDelta/120;
+          } else if (event.detail) { // Mozilla case. 
+          // In Mozilla, sign of delta is different than in IE.
+          // Also, delta is multiple of 3.
+            delta = -event.detail/3;
+          }
+          // If delta is nonzero, handle it.
+          // Basically, delta is now positive if wheel was scrolled up,
+          // and negative, if wheel was scrolled down.
+          
+          if (delta)
+            handle(delta, mouseX(event), mouseY(event));
+          // Prevent default actions caused by mouse wheel.
+          // That might be ugly, but we handle scrolls somehow
+          // anyway, so don't bother here..
+         
+          if (event.preventDefault)
+            event.preventDefault();
+          event.returnValue = false;
+        }
+
+        canvas = $("#canvas")[0]
+        ctx = canvas.getContext("2d");
+
+        people.push( new Person(100,100,commanddiv) );
+        people.push( new Person(110,110,commanddiv) );
+        
+        landcover = new Landcover( ctx, "/static/img/boston.png", 30, 30, function(){
+          crop = new Crop(landcover,3);
+
+          var croploop = function() {
+            crop.update( 0.0001 );
+            setTimeout( croploop, 100 );
+          }
+          croploop();
+
+          var personAdvance = function() {
+            for(var i=0; i<people.length; i++){
+              people[i].advance(1, 0.05);
+              people[i].pick(crop);
+              people[i].divide();
+            }
+            setTimeout( personAdvance, 10 );
+          }
+          personAdvance();
+
+          var redrawloop = function() {
+            redraw();
+            setTimeout( redrawloop, 1000/30 );
+          }
+          redrawloop();
+
+          apply_transform();
+          redraw();
+        });
+
+
+        canvas.onmousedown = function(ev) {
+          if(ev.button==0){
+            //once through to deliver commands
+            var commanded=false;
+            for(var i=0; i<people.length; i++) {
+              if(people[i].selected){
+                people[i].commandpoint( mapX(mouseX(ev)), mapY(mouseY(ev)) );
+                if(people[i].command)
+                  commanded=true;
+              }
+            }
+
+            if(!commanded){
+              for(var i=0; i<people.length; i++) {
+                var clicked = people[i].attemptSelect( mapX(mouseX(ev)), mapY(mouseY(ev)) ); 
+              }
+            }
+
+            redraw();
+          }
+        }
+        
+        canvas.onmouseup = function(ev) {
+        }
+
+        document.onkeypress = function(ev) {
+
+          var key = String.fromCharCode( ev.charCode );
+          
+          if(key==='.') {
+            for(var i in people){
+              people[i].unselect();
+            }
+
+            var person = people[currPerson];
+            person.select();
+            ll = person.x-30;
+            rr = person.x+30;
+            bb = person.y+30;
+            tt = person.y-30;
+            apply_transform();
+            redraw();
+
+            currPerson = (currPerson+1)%people.length;
+          }
+
+          //next idle worker
+          if(key===',') {
+            for(var i=currPerson; i<currPerson+people.length; i++){
+              var person = people[i%people.length];
+              if(person.command==null){
+                for(j in people){
+                  people[j].unselect();
+                }
+                person.select();
+                ll = person.x-30;
+                rr = person.x+30;
+                bb = person.y+30;
+                tt = person.y-30;
+                apply_transform();
+                redraw();
+                currPerson = (i+1)%people.length;
+                break;
+              }
+            }
+          }
+
+          for(var i=0; i<people.length; i++){
+            if(people[i].selected){
+              people[i].commandkey(key);
+            }
+          }
+        }
+        
+        canvas.oncontextmenu = function(ev) {
+          return false;
+        }
+
+        canvas.onclick = function(ev) {
+        }
+
+        function mouseX(ev) {
+          var posx = 0;
+          if (ev.pageX) {
+            posx = ev.pageX;
+          }
+          else if (ev.clientX) {
+            posx = ev.clientX + document.body.scrollLeft
+                   + document.documentElement.scrollLeft;
+          }
+
+          return posx - ev.target.offsetLeft;
+        }
+        function mouseY(ev) {
+          var posy = 0;
+          if (ev.pageY) {
+            posy = ev.pageY;
+          }
+          else if (ev.clientY) {
+            posy = ev.clientY + document.body.scrollTop
+                   + document.documentElement.scrollTop;
+          }
+
+          return posy - ev.target.offsetTop;
+        }
+
+        function mapX(x) {
+          return (x/canvas.width)*(rr-ll)+ll;
+        }
+
+        function mapY(y) {
+          return (y/canvas.height)*(bb-tt)+tt;
+        }
+        
+        function redraw() {
+            ctx.clearRect( ll,tt,(rr-ll),(bb-tt) );
+
+            landcover.draw();
+
+            crop.draw(ctx);
+
+            for(var i=0; i<people.length; i++)
+              people[i].draw(ctx);
+
+        }
+
+
+        canvas.onmousemove = function(ev){
+          if( ev.button==2 ) {
+            var deltax = mapX(mouseX(ev))-mapX(pmouseX);
+            var deltay = mapY(mouseY(ev))-mapY(pmouseY);
+            ll -= deltax;
+            rr -= deltax;
+            bb -= deltay;
+            tt -= deltay;
+
+            apply_transform();
+            redraw();
+          }
+
+
+          pmouseX=mouseX(ev);
+          pmouseY=mouseY(ev);
+        }
+
+        canvas.onmouseout = function(ev) {
+        }
+
+        if (window.addEventListener)
+          // DOMMouseScroll is for mozilla.
+          window.addEventListener('DOMMouseScroll', wheel, false);
+        // IE/Opera.
+        window.onmousewheel = document.onmousewheel = wheel;
+
+      });
+    </script>
+  </head>
+  <body style="background-color:#ffeeee">
+    <canvas style="float:left;background-color:#ffffff;image-rendering:optimizeSpeed" id="canvas" width="1000" height="1000"></canvas>
+    <div style="float:left;cursor:default" id="commands">
+      <!--<div style="width:100;height:50;background-color:yellow;" id="commandgo">(g)o</div>
+      <div style="width:100;height:50;background-color:#ff00ff;" id="commandroute">(r)oute</div>
+      <div style="width:100;height:50;background-color:#00ff00;" id="commandstop">(s)top</div>-->
+    <div>
+  </body>
+</html>

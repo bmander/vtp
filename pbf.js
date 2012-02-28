@@ -121,6 +121,13 @@ function DenseNodes(message){
     }else{
       var keysvals=null;
     }
+
+    if( id<0 ) {
+      console.log( "DENSENODES FIRST NODE" );
+      ids.i=0;
+      id = ids.next(true);
+      console.log( id, ids );
+    }
    
     var progress = onnode({id:id,lat:lat,lon:lon,keyval:keyval});
     if( progress===false ){
@@ -128,11 +135,25 @@ function DenseNodes(message){
       return false;
     }
  
+    var did;
     while( ids.more() ) {
-      id = ids.next(true)+id;
+      did = ids.next(true);
+      id = did+id;
       lat = lats.next(true)/10000000+lat;
       lon = lons.next(true)/10000000+lon;
       keyval = keysvals ? keysvals.next() : null;
+
+      if( id < 0 ) {
+        console.log( "ID "+id+" < 0 " );
+        console.log( ids );
+        process.exit();
+      }
+
+      if( id<0 ) {
+        console.log( "DENSENODES INTERMEDIATE NODE" );
+        console.log( id, ids );
+      }
+
       progress = onnode({id:id,lat:lat,lon:lon,keyval:keyval});
       if( progress===false ){
         onfinish(false);
@@ -173,7 +194,7 @@ function Way(message){
     ret = [];
     var denserefs = new protobuf.DenseData( message.val(8) );
     if(denserefs.more()){
-      var ref = denserefs.next();
+      var ref = denserefs.next(true);
       ret.push(ref);
     }
 
@@ -220,6 +241,12 @@ function PrimitiveBlock(message){
     }
 
     this.primitivegroup.dense.nodes(function(node){
+      if(node.id<0){
+        console.log("CATASTROPHE");
+        console.log(node);
+        process.exit();
+      }
+
       var keyval={};
       if(node.keyval!==undefined && node.keyval!==null){
         for(var i=0; i<node.keyval.length; i++){
@@ -317,6 +344,42 @@ function PBFFile(fileblockfile){
             }
 
             // when finished, check if it is the last node ever; if so, call the onfinish callback
+            nfinished += 1;
+            if(!stillreading && (nfinished==nstarted)){
+              onfinish(true);
+            }
+          });
+        });
+      }  
+    },function(){
+      stillreading=false;
+    });
+  }
+
+  this.ways = function(onway,onfinish){
+    var stillreading=true;
+    var nstarted=0;
+    var nfinished=0;
+
+    // for each file block read just the header
+    fileblockfile.read(function(fileblock){
+
+      // if it's a data block
+      if(fileblock.header.type==="OSMData"){
+
+        // read the payload
+        nstarted += 1;
+        fileblock.readPayload(function(payload){
+
+          // for each way in each file block
+          // call the onway callback
+          payload.ways(onway, function(normalexit){
+            if(normalexit===false){
+              onfinish(false);
+              return false;
+            }
+
+            // when finished, check if it is the last way ever; if so, call the onfinish callback
             nfinished += 1;
             if(!stillreading && (nfinished==nstarted)){
               onfinish(true);
