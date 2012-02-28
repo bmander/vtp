@@ -1,3 +1,4 @@
 *.swp
 *.pbf
 node_modules
+*.osm
