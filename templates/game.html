@@ -123,6 +123,7 @@
         patha.pts=[[ll,bb],[rr,tt]];
         pathb = new Path(ctx);
         pathb.pts=[[ll,tt],[rr,bb]];
+        redraw();
 
         canvas.onmousedown = function(ev) {
           if(ev.button==0){
