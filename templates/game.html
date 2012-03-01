@@ -4,22 +4,236 @@
     <script src="/static/js/jquery.js"></script>
     <!--<script src="/static/js/socket.io.js"></script>-->
     <script type="text/javascript">
+      var C=100;
+
       var canvas;
       var ctx;
 
       var pmouseX=null;
       var pmouseY=null;
 
-      var ll=0;
-      var rr=1000;
-      var tt=0;
-      var bb=1000;
+      var ll=-71.116102;
+      var rr=-71.10;
+      var tt=42.37;
+      var bb=42.3594;
 
       var patha;
       var pathb;
 
+      var res=0.02;
+      var tiles={};
+
+      var graph = new Graph();
+      var tree;
+  
+      function clear(){
+        ctx.clearRect(ll,bb,(rr-ll),(tt-bb));
+      }
+
+      function edge_weight(edge) {
+        var mult=1;
+        if( edge.keysvals.highway === "motorway" || edge.keysvals.highway === "motorway_link"){
+          return null;
+        }
+        if( edge.keysvals.highway === "footway" || edge.keysvals.highway === "cycleway" ) {
+          mult = 0.75;
+        } else if( edge.keysvals.highway === "primary" ) {
+          mult = 1.5;
+        }
+
+        var ret = 0;
+        if(edge.loc.length<2){
+          return 0;
+        }
+        for(var i=0; i<edge.loc.length-1; i++) {
+          ret += dist( edge.loc[i][0], edge.loc[i][1], edge.loc[i+1][0], edge.loc[i+1][1] );
+        }
+        return mult*ret;
+      }
+
+      function draw_way(ctx, way, linewidth){
+              if( linewidth === undefined ) {
+                if(way.keysvals.highway==="primary"){
+                  ctx.lineWidth=0.00002;
+                } else {
+                  ctx.lineWidth=0.000005;
+                }
+              } else {
+                ctx.lineWidth=linewidth;
+              }
+
+              if(way.loc.length<2)
+                return;
+              if(!way.loc[0][0] || !way.loc[0][1])
+                return;
+
+              ctx.beginPath();
+              ctx.moveTo(way.loc[0][0],way.loc[0][1]);
+              for(var j=1; j<way.loc.length; j++){
+                if(!way.loc[j][0] || !way.loc[j][1])
+                  continue;
+                ctx.lineTo(way.loc[j][0], way.loc[j][1]);
+              }
+              ctx.stroke();
+      }
+
+      function draw_tree(ctx,tree){
+        for(var item in tree){
+          if( tree[item]['way'] ){
+            //ctx.lineWidth=tree[item]['trunkyness'];
+            draw_way(ctx,tree[item]['way'],Math.pow(tree[item]['trunkyness'],0.4)*0.0005+0.00001);
+          }
+        }
+      }
+
+      function Graph(){
+        this.adj = {}; //nodeid -> list of (nodeid, edge)
+        
+        this.add = function(fromv,tov,edge){
+          if(this.adj[fromv]===undefined){
+            this.adj[fromv]=[];
+          }
+          this.adj[fromv].push( [tov, edge] );
+        }
+
+      }
+
+      function Queue(){
+        this.data = {};
+        
+        this.insert = function(item,label,prio){
+          if( this.data[label] !== undefined ) {
+            if(this.data[label][1]>prio){
+              this.data[label] = [item,prio];
+            }
+          } else {
+            this.data[label] = [item,prio];
+          }
+        } 
+
+        this.min = function() {
+          var min=null;
+          var minweight=10000000;
+          for( var item in this.data ){
+            if ( this.data[item][1] < minweight ) {
+              minweight = this.data[item][1];
+              min=item; 
+            }
+          }
+          return min;
+        }
+
+        this.extract_min = function() {
+          var minkey = this.min();
+          var ret = this.data[minkey];
+          delete this.data[minkey];
+          return ret;
+        }
+
+        this.empty = function() {
+          for( var item in this.data ){
+            return false;
+          }
+          return true;
+        }
+      }
+      
+
+      function Tile(ll,bb,ww,hh){
+        this.ll=ll;
+        this.bb=bb;
+        this.ww=ww;
+        this.hh=hh;
+
+        this.ways = []
+
+        this.nearestNode = function(x,y){
+          var winnerdist=100000000;
+          var winner=null;
+          for(var i=0; i<this.ways.length; i++){
+            var way = this.ways[i];
+
+            if(!way.loc || way.loc.length==0){
+              continue;
+            }
+            var s0 = way.loc[0];
+            var dists0 = dist(s0[0],s0[1],x,y);
+            if(dists0<winnerdist){
+              winnerdist = dists0;
+              winner=way.nodes[0];
+            }
+          
+            var s1 = way.loc[way.loc.length-1];
+            var dists1 = dist(s1[0],s1[1],x,y);
+            if(dists1<winnerdist){
+              winnerdist = dists1
+              winner=way.nodes[way.nodes.length-1];
+            }
+          }
+          return winner;
+        }
+
+        this.draw = function(ctx, drawways){
+          ctx.beginPath();
+          ctx.moveTo(ll,bb);
+          ctx.lineTo(ll+ww,bb);
+          ctx.lineTo(ll+ww,bb+hh);
+          ctx.lineTo(ll,bb+hh);
+          ctx.lineTo(ll,bb);
+          ctx.stroke();
+
+          if(drawways!==false){
+            for(var i=0; i<this.ways.length; i++){
+              this.drawWay(ctx,i); 
+            }
+          }
+        }
+
+        this.drawWay = function(ctx,i){
+
+              var way = this.ways[i];
+              draw_way( ctx, way );
+        }
+
+        this.tilekey = function(){
+          return this.ll.toFixed(2)+":"+this.bb.toFixed(2);
+        }
+
+        this.fetch = function(ctx, graph){
+          var metathis=this;
+          $.getJSON("/tile/"+this.tilekey(), function(data){
+            if(!data)
+              return;
+            metathis.ways = data.value.ways;
+ 
+            metathis.draw(ctx);
+
+            for(var i=0; i<data.value.ways.length; i++){
+              var way = data.value.ways[i];
+              if( way.loc.length<2 || way.nodes.length<2 ){
+                 continue;
+              }
+              graph.add( way.nodes[0], way.nodes[way.nodes.length-1], way );
+              if( way.keysvals.oneway !== "true" && way.keysvals.oneway !== "yes" ){
+                graph.add( way.nodes[way.nodes.length-1], way.nodes[0], way );
+              }
+            }
+          });
+
+          
+        }
+
+      }
+
       function dist(x1,y1,x2,y2) {
         return Math.sqrt( Math.pow(x1-x2,2)+Math.pow(y1-y2,2) );
+      }
+      function min(a,b){
+        if(a>b) {
+          return a;
+        } else {
+          return b;
+        }
       }
       function mag(x,y){
         return Math.sqrt( Math.pow(x,2)+Math.pow(y,2) );
@@ -37,6 +251,7 @@
           for(var i=1; i<this.pts.length; i++) {
             this.ctx.lineTo( this.pts[i][0], this.pts[i][1] );
           }
+          this.ctx.lineWidth=0.000005;
           this.ctx.stroke();
         }
         this.drawLast = function() {
@@ -82,8 +297,8 @@
           bb = centery + newheight*(1-smidgey);
 
           apply_transform();
-
           redraw();
+          fetchTiles();
         }
 
         function wheel(event){
@@ -118,39 +333,24 @@
 
         canvas = $("#canvas")[0]
         ctx = canvas.getContext("2d");
+        ctx.lineWidth=0.000005;
+        ctx.lineCap="round";
        
         patha = new Path(ctx);
         patha.pts=[[ll,bb],[rr,tt]];
         pathb = new Path(ctx);
         pathb.pts=[[ll,tt],[rr,bb]];
+        apply_transform();
         redraw();
+        fetchTiles();
 
         canvas.onmousedown = function(ev) {
-          if(ev.button==0){
-            //once through to deliver commands
-            var commanded=false;
-
-            if(!commanded){
-            }
-
-            redraw();
-          }
         }
         
         canvas.onmouseup = function(ev) {
         }
 
         document.onkeypress = function(ev) {
-
-          var key = String.fromCharCode( ev.charCode );
-          
-          if(key==='.') {
-
-            apply_transform();
-            redraw();
-
-          }
-
         }
         
         canvas.oncontextmenu = function(ev) {
@@ -158,6 +358,63 @@
         }
 
         canvas.onclick = function(ev) {
+          tree = {};
+          redraw();
+
+          var x = mapX(mouseX(ev));
+          var y = mapY(mouseY(ev)); 
+
+          var tile = tiles[gettilekey(x,y)];
+          var startnode = tile.nearestNode( x,y );
+        
+          var queue = new Queue();
+          queue.insert( {'orig':null,'dest':startnode,'way':null,'edgeweight':0}, startnode, 0 );
+          
+          while( !queue.empty() ) {
+            var best_edge = queue.extract_min();
+            var best_edge_orig=best_edge[0]['orig']
+            var best_edge_dest=best_edge[0]['dest'];
+            ctx.strokeStyle="red";
+            //if(best_edge[0]['way'])
+            //  draw_way( ctx, best_edge[0]['way'], 0.00005 );
+            var best_edge_weight=best_edge[1];
+
+            tree[best_edge_dest]={'orig':best_edge_orig,'weight':best_edge_weight,'edgeweight':best_edge[0]['edgeweight'],'trunkyness':0,'way':best_edge[0]['way']};
+            //draw_tree(ctx,tree);
+            //trace up the tree adding the edge weight
+            var parentid=best_edge_orig;
+            while(parentid){
+              tree[parentid]['trunkyness']+=best_edge[0]['edgeweight'];
+              parentid = tree[parentid]['orig']
+            }
+
+            var outgoing = graph.adj[best_edge_dest];
+            if(!outgoing)
+              continue;
+
+            for( var i=0; i<outgoing.length; i++ ){
+              var candidate_edge = outgoing[i];
+              var cand_dest_node = candidate_edge[0];
+              var cand_edge_data = candidate_edge[1];
+              var cand_edge_weight = edge_weight( cand_edge_data );
+              if(cand_edge_weight===null){
+                continue;
+              }
+              if( tree[cand_dest_node] !== undefined ){
+                continue;
+              }
+              queue.insert( {'orig':best_edge_dest, 'dest':cand_dest_node,'way':cand_edge_data, 'edgeweight':cand_edge_weight}, cand_dest_node, best_edge_weight+cand_edge_weight );
+            }
+          }  
+
+          draw_tree(ctx,tree);
+        }
+
+        function gettilekey(x,y){
+          var xstart = (Math.round(Math.floor(x/res)*res*1000)/1000);
+          var ystart = (Math.round(Math.floor(y/res)*res*1000)/1000);
+
+          return xstart.toFixed(2)+":"+ystart.toFixed(2);
         }
 
         function mouseX(ev) {
@@ -194,9 +451,42 @@
         }
         
         function redraw() {
-          ctx.clearRect( ll,tt,(rr-ll),(bb-tt) );
-          patha.draw();
-          pathb.draw();
+          console.log( "blah" );
+          //ctx.clearRect( ll,tt,(rr-ll),(bb-tt) );
+          ctx.clearRect(ll,bb,(rr-ll),(tt-bb));
+          ctx.strokeStyle="red";
+          draw_tree(ctx,tree);
+          ctx.strokeStyle="black";
+ 
+          for(tile in tiles){
+            tiles[tile].draw(ctx);
+          }
+        }
+
+        function fetchTiles() {
+
+          if((rr-ll)/res > 20 || (tt-bb)/res > 20)
+            return; //too big
+
+          var xstart = (Math.round(Math.floor(ll/res)*res*1000)/1000);
+          var ystart = (Math.round(Math.floor(bb/res)*res*1000)/1000);
+          var x = xstart;
+          var y = ystart;
+
+          while(x<rr){
+            while(y<tt){
+              var tilekey = x.toFixed(2)+":"+y.toFixed(2);
+              if( tiles[tilekey]===undefined ) {
+                console.log( "new tile "+tilekey );
+                tiles[tilekey]=new Tile(x,y,res,res);
+                tiles[tilekey].fetch(ctx, graph);
+              } 
+              y += res;
+            }
+            y = ystart;
+            x += res;
+          }
+
         }
 
 
@@ -211,6 +501,7 @@
 
             apply_transform();
             redraw();
+            fetchTiles();
           }
 
 
