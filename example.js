@@ -1,12 +1,9 @@
-/*var http = require('http');
-http.createServer(function (req, res) {
-  res.writeHead(200, {'Content-Type': 'text/plain'});
-  res.end('Hello World\n');
-}).listen(80, "ec2-174-129-102-215.compute-1.amazonaws.com");
-console.log('Server running at http://127.0.0.1:80/');*/
 
 var express = require('express');
 var fs = require('fs');
+var mongodb = require('mongodb');
+
+var server = new mongodb.Db('test', new mongodb.Server("127.0.0.1", 27017, {}));
 var app = express.createServer();
 
 app.get('/foobar', function(req,res){
@@ -18,6 +15,17 @@ app.get('/static/js/jquery.js', function(req,res){
   res.contentType("javascript");
   fs.readFile( "templates/jquery.js", function(err,data){
     res.send( data );
+  });
+});
+
+server.open(function(err, client) {
+  var collection = new mongodb.Collection(client,"tiled_ways");
+  app.get('/tile/*', function(req,res) {
+    res.contentType("json");
+    var cursor = collection.find({_id:req.params[0]}).limit(1);
+      cursor.nextObject( function(err,doc){
+        res.send( doc );
+    });
   });
 });
 
