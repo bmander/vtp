@@ -23,6 +23,7 @@
       var res=0.02;
       var tiles={};
 
+      var dijkstra;
       var graph = new Graph();
       var tree;
   
@@ -52,37 +53,128 @@
       }
 
       function draw_way(ctx, way, linewidth){
-              if( linewidth === undefined ) {
-                if(way.keysvals.highway==="primary"){
-                  ctx.lineWidth=0.00002;
-                } else {
-                  ctx.lineWidth=0.000005;
-                }
-              } else {
-                ctx.lineWidth=linewidth;
-              }
+        if( linewidth === undefined ) {
+          if(way.keysvals.highway==="primary"){
+            ctx.lineWidth=0.00002;
+          } else {
+            ctx.lineWidth=0.000005;
+          }
+        } else {
+          ctx.lineWidth=linewidth;
+        }
 
-              if(way.loc.length<2)
-                return;
-              if(!way.loc[0][0] || !way.loc[0][1])
-                return;
+        if(way.loc.length<2)
+          return;
+        if(!way.loc[0][0] || !way.loc[0][1])
+          return;
 
-              ctx.beginPath();
-              ctx.moveTo(way.loc[0][0],way.loc[0][1]);
-              for(var j=1; j<way.loc.length; j++){
-                if(!way.loc[j][0] || !way.loc[j][1])
-                  continue;
-                ctx.lineTo(way.loc[j][0], way.loc[j][1]);
-              }
-              ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(way.loc[0][0],way.loc[0][1]);
+        for(var j=1; j<way.loc.length; j++){
+          if(!way.loc[j][0] || !way.loc[j][1])
+            continue;
+          ctx.lineTo(way.loc[j][0], way.loc[j][1]);
+        }
+        ctx.stroke();
+      }
+
+      function Dijkstra(startnode){
+        this.startnode = startnode;
+        this.queue = new Queue();
+        this.running = null;
+
+        //dummy edge goes to origin
+        this.queue.insert( {'orig':null,'dest':startnode,'way':null,'edgeweight':0}, startnode, 0 );
+        
+        this.step = function(exponent){  
+          if( this.queue.empty() ){
+            return;
+          }
+
+          // get edge to nearest unreached vertex
+          var best_edge = this.queue.extract_min();
+          var best_edge_orig=best_edge[0]['orig']
+          var best_edge_dest=best_edge[0]['dest'];
+          ctx.strokeStyle="red";
+          var best_edge_weight=best_edge[1];
+
+          // stick that edge in the tree (destination points back to origin)
+          tree[best_edge_dest]={'orig':best_edge_orig,'weight':best_edge_weight,'edgeweight':best_edge[0]['edgeweight'],'trunkyness':0,'way':best_edge[0]['way']};
+
+          // draw the edge
+          draw_tree_branch( ctx, tree[best_edge_dest], exponent );
+          //trace up the tree adding the edge weight
+          var parentid=best_edge_orig;
+          while(parentid){
+            tree[parentid]['trunkyness']+=best_edge[0]['edgeweight'];
+            draw_tree_branch( ctx, tree[parentid], exponent );
+            parentid = tree[parentid]['orig']
+          }
+
+          // for each outgoing edge
+          var outgoing = graph.adj[best_edge_dest];
+          if(!outgoing)
+            return;
+
+          for( var i=0; i<outgoing.length; i++ ){
+            var candidate_edge = outgoing[i];
+            var cand_dest_node = candidate_edge[0];
+            var cand_edge_data = candidate_edge[1];
+            var cand_edge_weight = edge_weight( cand_edge_data );
+            if(cand_edge_weight===null){
+              continue;
+            }
+            if( tree[cand_dest_node] !== undefined ){
+              continue;
+            }
+
+            // insert into queue
+            this.queue.insert( {'orig':best_edge_dest, 'dest':cand_dest_node,'way':cand_edge_data, 'edgeweight':cand_edge_weight}, cand_dest_node, best_edge_weight+cand_edge_weight );
+          }
+        }
+
+        this.run = function(exponent){
+          this.running=true;
+          var metathis=this;
+          var metastep = function(){
+            if(!metathis.running){
+              return;
+            }            
+
+            if(metathis.queue.empty())
+              return;
+            for(var i=0; i<10; i++){
+             metathis.step(exponent);
+            }
+            setTimeout(metastep, 0);
+          }
+          metastep();
+        }
+
+        this.stop = function(){
+          this.running=false;
+        }
+      }
+
+      function draw_tree_branch(ctx,branch, exponent){
+          if( exponent === undefined ){ exponent = 0.5; }
+
+          if( branch['way'] ){
+            
+            //ctx.lineWidth=tree[item]['trunkyness'];
+            /*
+            console.log( Math.pow(branch['trunkyness'],exponent)*0.0005 );
+            var branchwidth;
+            if(branch['trunkyness']!==undefined){
+              branchwidth=*/
+        
+            draw_way(ctx,branch['way'],Math.pow(branch['trunkyness'],exponent)*0.0005+0.00001);
+          }
       }
 
       function draw_tree(ctx,tree){
         for(var item in tree){
-          if( tree[item]['way'] ){
-            //ctx.lineWidth=tree[item]['trunkyness'];
-            draw_way(ctx,tree[item]['way'],Math.pow(tree[item]['trunkyness'],0.4)*0.0005+0.00001);
-          }
+          draw_tree_branch(ctx,tree[item]);
         }
       }
 
@@ -174,13 +266,14 @@
         }
 
         this.draw = function(ctx, drawways){
+          /*
           ctx.beginPath();
           ctx.moveTo(ll,bb);
           ctx.lineTo(ll+ww,bb);
           ctx.lineTo(ll+ww,bb+hh);
           ctx.lineTo(ll,bb+hh);
           ctx.lineTo(ll,bb);
-          ctx.stroke();
+          ctx.stroke();*/
 
           if(drawways!==false){
             for(var i=0; i<this.ways.length; i++){
@@ -358,6 +451,9 @@
         }
 
         canvas.onclick = function(ev) {
+
+          var exponent =  parseFloat($("#exponent")[0].value);
+
           tree = {};
           redraw();
 
@@ -366,48 +462,18 @@
 
           var tile = tiles[gettilekey(x,y)];
           var startnode = tile.nearestNode( x,y );
-        
-          var queue = new Queue();
-          queue.insert( {'orig':null,'dest':startnode,'way':null,'edgeweight':0}, startnode, 0 );
+     
+          if(dijkstra !== undefined){
+            dijkstra.stop();
+          }
+          dijkstra = new Dijkstra(startnode); 
+          dijkstra.run(exponent);
           
-          while( !queue.empty() ) {
-            var best_edge = queue.extract_min();
-            var best_edge_orig=best_edge[0]['orig']
-            var best_edge_dest=best_edge[0]['dest'];
-            ctx.strokeStyle="red";
-            //if(best_edge[0]['way'])
-            //  draw_way( ctx, best_edge[0]['way'], 0.00005 );
-            var best_edge_weight=best_edge[1];
+          //while( !dijkstra.queue.empty() ){
+          //  dijkstra.step();
+          //}
 
-            tree[best_edge_dest]={'orig':best_edge_orig,'weight':best_edge_weight,'edgeweight':best_edge[0]['edgeweight'],'trunkyness':0,'way':best_edge[0]['way']};
-            //draw_tree(ctx,tree);
-            //trace up the tree adding the edge weight
-            var parentid=best_edge_orig;
-            while(parentid){
-              tree[parentid]['trunkyness']+=best_edge[0]['edgeweight'];
-              parentid = tree[parentid]['orig']
-            }
-
-            var outgoing = graph.adj[best_edge_dest];
-            if(!outgoing)
-              continue;
-
-            for( var i=0; i<outgoing.length; i++ ){
-              var candidate_edge = outgoing[i];
-              var cand_dest_node = candidate_edge[0];
-              var cand_edge_data = candidate_edge[1];
-              var cand_edge_weight = edge_weight( cand_edge_data );
-              if(cand_edge_weight===null){
-                continue;
-              }
-              if( tree[cand_dest_node] !== undefined ){
-                continue;
-              }
-              queue.insert( {'orig':best_edge_dest, 'dest':cand_dest_node,'way':cand_edge_data, 'edgeweight':cand_edge_weight}, cand_dest_node, best_edge_weight+cand_edge_weight );
-            }
-          }  
-
-          draw_tree(ctx,tree);
+          //draw_tree(ctx,tree);
         }
 
         function gettilekey(x,y){
@@ -451,13 +517,13 @@
         }
         
         function redraw() {
-          console.log( "blah" );
           //ctx.clearRect( ll,tt,(rr-ll),(bb-tt) );
           ctx.clearRect(ll,bb,(rr-ll),(tt-bb));
           ctx.strokeStyle="red";
           draw_tree(ctx,tree);
           ctx.strokeStyle="black";
- 
+
+          ctx.lineWidth=0.00005; 
           for(tile in tiles){
             tiles[tile].draw(ctx);
           }
@@ -524,9 +590,10 @@
   <body style="background-color:#ffeeee">
     <canvas style="float:left;background-color:#ffffff;image-rendering:optimizeSpeed" id="canvas" width="1000" height="1000"></canvas>
     <div style="float:left;cursor:default" id="commands">
-      <!--<div style="width:100;height:50;background-color:yellow;" id="commandgo">(g)o</div>
-      <div style="width:100;height:50;background-color:#ff00ff;" id="commandroute">(r)oute</div>
-      <div style="width:100;height:50;background-color:#00ff00;" id="commandstop">(s)top</div>-->
+      <form>
+        exponent: <input id="exponent" value="0.5"><br>
+        label: <input id="scale"/>
+      </form>
     <div>
   </body>
 </html>
