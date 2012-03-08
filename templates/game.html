@@ -12,10 +12,13 @@
       var pmouseX=null;
       var pmouseY=null;
 
+      var portwidth=0.016102;
+      var portheight=0.0106;
+
       var ll=-71.116102;
-      var rr=-71.10;
-      var tt=42.37;
+      var rr=ll+portwidth;//-71.10;
       var bb=42.3594;
+      var tt=bb+portheight;//42.37;
 
       var patha;
       var pathb;
@@ -31,15 +34,23 @@
         ctx.clearRect(ll,bb,(rr-ll),(tt-bb));
       }
 
-      function edge_weight(edge) {
+      function edge_weight(prev_edge, edge) {
+        if( edge.keysvals["oneway:bicycle"]==="yes" && edge.reverse ){
+          return null;
+        }
+
         var mult=1;
         if( edge.keysvals.highway === "motorway" || edge.keysvals.highway === "motorway_link"){
           return null;
         }
         if( edge.keysvals.highway === "footway" || edge.keysvals.highway === "cycleway" ) {
-          mult = 0.75;
+          mult = 1.0//;0.75;
         } else if( edge.keysvals.highway === "primary" ) {
-          mult = 1.5;
+          mult = 1.0//;1.5;
+        } else if( edge.keysvals.bicycle === "designated" ) {
+          mult = 0.7;
+        } else if( edge.keysvals.highway === "steps" ) {
+          mult = 10;
         }
 
         var ret = 0;
@@ -49,7 +60,24 @@
         for(var i=0; i<edge.loc.length-1; i++) {
           ret += dist( edge.loc[i][0], edge.loc[i][1], edge.loc[i+1][0], edge.loc[i+1][1] );
         }
-        return mult*ret;
+
+        var corner_penalty=0.0;
+        if(prev_edge && prev_edge.keysvals.name!==edge.keysvals.name){
+          corner_penalty=0.00005;
+        }
+
+        return mult*ret + corner_penalty;
+      }
+
+      function draw_linestring(ctx, ary){
+        ctx.beginPath();
+        ctx.moveTo(ary[0][0],ary[0][1]);
+        for(var j=1; j<ary.length; j++){
+          if(!ary[j][0] || !ary[j][1])
+            continue;
+          ctx.lineTo(ary[j][0], ary[j][1]);
+        }
+        ctx.stroke();
       }
 
       function draw_way(ctx, way, linewidth){
@@ -68,6 +96,7 @@
         if(!way.loc[0][0] || !way.loc[0][1])
           return;
 
+        /*
         ctx.beginPath();
         ctx.moveTo(way.loc[0][0],way.loc[0][1]);
         for(var j=1; j<way.loc.length; j++){
@@ -75,7 +104,8 @@
             continue;
           ctx.lineTo(way.loc[j][0], way.loc[j][1]);
         }
-        ctx.stroke();
+        ctx.stroke();*/
+        draw_linestring( ctx, way.loc );
       }
 
       function Dijkstra(startnode){
@@ -120,7 +150,7 @@
             var candidate_edge = outgoing[i];
             var cand_dest_node = candidate_edge[0];
             var cand_edge_data = candidate_edge[1];
-            var cand_edge_weight = edge_weight( cand_edge_data );
+            var cand_edge_weight = edge_weight( best_edge[0].way, cand_edge_data );
             if(cand_edge_weight===null){
               continue;
             }
@@ -156,19 +186,79 @@
         }
       }
 
+      function interpolate( ary, spacing ) {
+        if(ary.length<2){
+          return ary;
+        }
+
+        var ret = [];
+        
+        var cur=0;
+        var segstart=0;
+        var segend;
+        for(var i=1; i<ary.length; i++) {
+          var segdist = dist(ary[i-1][0],ary[i-1][1],ary[i][0],ary[i][1]);
+          var norm = [(ary[i][0]-ary[i-1][0])/segdist, (ary[i][1]-ary[i-1][1])/segdist];
+
+          segend = segstart + segdist;
+          while(cur<segend){
+            var seginterp = cur-segstart;
+            var yld = [norm[0]*seginterp+ary[i-1][0], norm[1]*seginterp+ary[i-1][1]]
+            ret.push( yld );
+
+            cur += spacing;
+          }
+          ret.push(ary[i]);
+          segstart = segend;
+        }
+
+        return ret;
+      }
+
+      function reverse(ary){
+        ret = [];
+        for(var i=ary.length-1; i--; i>=0){
+          ret.push( ary[i] );
+        }
+        return ret;
+      }
+
       function draw_tree_branch(ctx,branch, exponent){
           if( exponent === undefined ){ exponent = 0.5; }
 
           if( branch['way'] ){
+
+            if(branch.way.keysvals.highway==="footway" || branch.way.keysvals.highway==="path") {
+              ctx.strokeStyle="green";
+            } else if (branch.way.keysvals.bicycle==="designated") {
+              ctx.strokeStyle="purple"; 
+            } else if (branch.way.keysvals.highway==="cycleway") {
+              ctx.strokeStyle="blue";
+            } else {
+              ctx.strokeStyle="red";
+            }
             
-            //ctx.lineWidth=tree[item]['trunkyness'];
-            /*
-            console.log( Math.pow(branch['trunkyness'],exponent)*0.0005 );
-            var branchwidth;
-            if(branch['trunkyness']!==undefined){
-              branchwidth=*/
-        
-            draw_way(ctx,branch['way'],Math.pow(branch['trunkyness'],exponent)*0.0005+0.00001);
+            if(branch['trunkyness']==0){
+              var segs = interpolate( branch.way.loc, 0.0001);
+              var len = 0;
+              if( branch.way.reverse ){
+                for(var i=1; i<segs.length; i++){
+                  len += dist(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
+                  ctx.lineWidth=Math.pow(len,exponent)*0.0005;
+                  draw_linestring( ctx, [segs[i-1],segs[i]] );
+                }
+              } else {
+                for(var i=segs.length-1; i>=1; i--){
+                  len += dist(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
+                  ctx.lineWidth=Math.pow(len,exponent)*0.0005;
+                  draw_linestring( ctx, [segs[i-1],segs[i]] );
+                }
+              }
+            } else {
+              var branchwidth=Math.pow(branch['trunkyness'],exponent)*0.0005;
+              draw_way(ctx,branch['way'],branchwidth);
+            }
+       
           }
       }
 
@@ -308,7 +398,8 @@
               }
               graph.add( way.nodes[0], way.nodes[way.nodes.length-1], way );
               if( way.keysvals.oneway !== "true" && way.keysvals.oneway !== "yes" ){
-                graph.add( way.nodes[way.nodes.length-1], way.nodes[0], way );
+                var revway = {reverse:true,loc:way.loc,keysvals:way.keysvals,id:way.id,nodes:way.nodes}
+                graph.add( way.nodes[way.nodes.length-1], way.nodes[0], revway );
               }
             }
           });
@@ -359,8 +450,6 @@
 
       }
 
-      $(document).ready( function() {
-
         function apply_transform(){
           ctx.setTransform(1,0,0,1,0,0);
 
@@ -370,6 +459,46 @@
           ctx.translate( -ll*xscale, -tt*yscale );
           ctx.scale(xscale,yscale);
         }
+        function redraw() {
+          //ctx.clearRect( ll,tt,(rr-ll),(bb-tt) );
+          ctx.clearRect(ll,bb,(rr-ll),(tt-bb));
+          ctx.strokeStyle="red";
+          draw_tree(ctx,tree);
+          ctx.strokeStyle="black";
+
+          ctx.lineWidth=0.00005; 
+          for(tile in tiles){
+            tiles[tile].draw(ctx);
+          }
+        }
+
+        function fetchTiles() {
+
+          if((rr-ll)/res > 20 || (tt-bb)/res > 20)
+            return; //too big
+
+          var xstart = (Math.round(Math.floor(ll/res)*res*1000)/1000);
+          var ystart = (Math.round(Math.floor(bb/res)*res*1000)/1000);
+          var x = xstart;
+          var y = ystart;
+
+          while(x<rr){
+            while(y<tt){
+              var tilekey = x.toFixed(2)+":"+y.toFixed(2);
+              if( tiles[tilekey]===undefined ) {
+                console.log( "new tile "+tilekey );
+                tiles[tilekey]=new Tile(x,y,res,res);
+                tiles[tilekey].fetch(ctx, graph);
+              } 
+              y += res;
+            }
+            y = ystart;
+            x += res;
+          }
+
+        }
+      $(document).ready( function() {
+
 
         function handle(delta, x, y) {
 
@@ -516,44 +645,6 @@
           return (y/canvas.height)*(bb-tt)+tt;
         }
         
-        function redraw() {
-          //ctx.clearRect( ll,tt,(rr-ll),(bb-tt) );
-          ctx.clearRect(ll,bb,(rr-ll),(tt-bb));
-          ctx.strokeStyle="red";
-          draw_tree(ctx,tree);
-          ctx.strokeStyle="black";
-
-          ctx.lineWidth=0.00005; 
-          for(tile in tiles){
-            tiles[tile].draw(ctx);
-          }
-        }
-
-        function fetchTiles() {
-
-          if((rr-ll)/res > 20 || (tt-bb)/res > 20)
-            return; //too big
-
-          var xstart = (Math.round(Math.floor(ll/res)*res*1000)/1000);
-          var ystart = (Math.round(Math.floor(bb/res)*res*1000)/1000);
-          var x = xstart;
-          var y = ystart;
-
-          while(x<rr){
-            while(y<tt){
-              var tilekey = x.toFixed(2)+":"+y.toFixed(2);
-              if( tiles[tilekey]===undefined ) {
-                console.log( "new tile "+tilekey );
-                tiles[tilekey]=new Tile(x,y,res,res);
-                tiles[tilekey].fetch(ctx, graph);
-              } 
-              y += res;
-            }
-            y = ystart;
-            x += res;
-          }
-
-        }
 
 
         canvas.onmousemove = function(ev){
@@ -594,6 +685,10 @@
         exponent: <input id="exponent" value="0.5"><br>
         label: <input id="scale"/>
       </form>
+      <div onclick="ll=-71.057339;rr=ll+portwidth;bb=42.359749;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Boston</div>
+      <div onclick="ll=-122.34375;rr=ll+portwidth;bb=47.601996;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Seattle</div>
+      <div onclick="ll=-122.683296;rr=ll+portwidth;bb=45.517654;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Portland</div>
+      <div onclick="ll=-122.418423;rr=ll+portwidth;bb=37.778788;tt=bb+portheight;apply_transform();fetchTiles();redraw();">San Francisco</div>
     <div>
   </body>
 </html>
