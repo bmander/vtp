@@ -103,8 +103,12 @@ function DenseInfo(message) {
 function DenseNodes(message){
   this.message = message;
   this.nodesSync = function(onnode,onfinish){
-    if(!this.message.hasField(1))
+    if(!this.message.hasField(1)) {
+      debugger;
+      onfinish();
       return; 
+    }
+    debugger;
 
     var ids = new protobuf.DenseData( this.message.val(1) );
     var id = ids.next(true);
@@ -232,51 +236,90 @@ function PrimitiveGroup(message){
 function PrimitiveBlock(message){
   this.stringtable = new StringTable( new protobuf.Message( message.val(1) ) );
   this.primitivegroup = new PrimitiveGroup( new protobuf.Message( message.vals(2)[0] ) );
+  this.primitivegroups=[];
+  var msgs = message.vals(2);
+  for(var i=0; i<msgs.length; i++){
+    this.primitivegroups.push( new PrimitiveGroup( new protobuf.Message( msgs[i] ) ) );
+  }
 
   var metathis=this;
   this.nodes = function(callback,onfinish){
-    if(this.primitivegroup.dense===null){
-      onfinish();
-      return;
+    //console.log( "primitiveblock has "+this.primitivegroups.length+" primitvegroups" );
+
+    if(this.primitivegroups.length==2){
+      debugger;
     }
 
-    this.primitivegroup.dense.nodes(function(node){
-      if(node.id<0){
-        console.log("CATASTROPHE");
-        console.log(node);
-        process.exit();
+    var finished=0;
+    var metathis=this;
+    var finishcounter = function(){
+      //console.log( "primitiveblock finished" );
+      finished += 1;
+      if( finished==metathis.primitivegroups.length ){
+        onfinish();
+      }
+    }
+
+    for(var i in this.primitivegroups){
+      var primitivegroup = this.primitivegroups[i];
+
+      if(primitivegroup.dense===null){
+        finishcounter();
+        continue;
       }
 
-      var keyval={};
-      if(node.keyval!==undefined && node.keyval!==null){
-        for(var i=0; i<node.keyval.length; i++){
-          var key = metathis.stringtable.get(node.keyval[i][0]);
-          var val = metathis.stringtable.get(node.keyval[i][1]);
-          keyval[key]=val;
+      primitivegroup.dense.nodes(function(node){
+        if(node.id<0){
+          console.log(node);
+          process.exit();
         }
-      }
-      node.keyval=keyval;
-      return callback(node); //if this callback returns false, dense.nodes stops iterating and returns onfinish(false)
-    },onfinish);
+
+        var keyval={};
+        if(node.keyval!==undefined && node.keyval!==null){
+          for(var i=0; i<node.keyval.length; i++){
+            var key = metathis.stringtable.get(node.keyval[i][0]);
+            var val = metathis.stringtable.get(node.keyval[i][1]);
+            keyval[key]=val;
+          }
+        }
+        node.keyval=keyval;
+        return callback(node); //if this callback returns false, dense.nodes stops iterating and returns onfinish(false)
+      },finishcounter);
+    }
   }
 
   this.ways = function(onway,onfinish){
-    this.primitivegroup.ways(function(way){
-      var retway={};
-      retway.id=way.id;
+    debugger
 
-      var rawkeysvals=way.keysvals();
-      retway.keysvals={}
-      for(var i=0; i<rawkeysvals.length; i++){
-        var key = metathis.stringtable.get(rawkeysvals[i][0]);
-        var val = metathis.stringtable.get(rawkeysvals[i][1]);
-        retway.keysvals[key]=val;
+    var finished=0;
+    var metathis=this;
+    var finishcounter = function(){
+      finished += 1;
+      if( finished==metathis.primitivegroups.length ) {
+        onfinish();
       }
+    }
 
-      retway.refs = way.refs();
+    for( var i in this.primitivegroups ){
+      var primitivegroup = this.primitivegroups[i];
 
-      onway(retway);
-    },onfinish);    
+      primitivegroup.ways(function(way){
+        var retway={};
+        retway.id=way.id;
+
+        var rawkeysvals=way.keysvals();
+        retway.keysvals={}
+        for(var i=0; i<rawkeysvals.length; i++){
+          var key = metathis.stringtable.get(rawkeysvals[i][0]);
+          var val = metathis.stringtable.get(rawkeysvals[i][1]);
+          retway.keysvals[key]=val;
+        }
+
+        retway.refs = way.refs();
+
+        onway(retway);
+      },finishcounter);
+    }
   }
 }
 
@@ -333,7 +376,9 @@ function PBFFile(fileblockfile){
 
         // read the payload
         nstarted += 1;
+        var dd = nstarted;
         fileblock.readPayload(function(payload){
+          //console.log( "read payload "+dd );
 
           // for each node in each file block
           // call the onnode callback
@@ -345,6 +390,8 @@ function PBFFile(fileblockfile){
 
             // when finished, check if it is the last node ever; if so, call the onfinish callback
             nfinished += 1;
+
+            //console.log( dd+" "+nfinished+"/"+nstarted+" finished" );
             if(!stillreading && (nfinished==nstarted)){
               onfinish(true);
             }
@@ -361,6 +408,7 @@ function PBFFile(fileblockfile){
     var nstarted=0;
     var nfinished=0;
 
+
     // for each file block read just the header
     fileblockfile.read(function(fileblock){
 
@@ -373,7 +421,10 @@ function PBFFile(fileblockfile){
 
           // for each way in each file block
           // call the onway callback
-          payload.ways(onway, function(normalexit){
+ 
+          var waysReadThisPayload=0;
+
+          payload.ways(function(way){waysReadThisPayload+=1;onway(way);}, function(normalexit){
             if(normalexit===false){
               onfinish(false);
               return false;
@@ -381,12 +432,15 @@ function PBFFile(fileblockfile){
 
             // when finished, check if it is the last way ever; if so, call the onfinish callback
             nfinished += 1;
+
             if(!stillreading && (nfinished==nstarted)){
               onfinish(true);
             }
           });
         });
       }  
+      
+       
     },function(){
       stillreading=false;
     });
