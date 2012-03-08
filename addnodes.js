@@ -1,7 +1,7 @@
 var pbf = require("./pbf.js");
 var mongodb = require('mongodb');
 
-var path="/storage/maps/boston.osm.pbf";
+var path="/storage/maps/portland.osm.pbf";
 var fileblockfile = new pbf.FileBlockFile(path);
 var pbffile = new pbf.PBFFile(fileblockfile);
 
