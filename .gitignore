@@ -2,3 +2,5 @@
 *.pbf
 node_modules
 *.osm
+*.log
+*.old
