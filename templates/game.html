@@ -403,80 +403,52 @@
         return Math.sqrt( Math.pow(x,2)+Math.pow(y,2) );
       }
 
-      function Path(ctx){
-        this.ctx = ctx;
-        this.pts = [];
-        this.draw = function() {
-          if( this.pts.length < 2 )
-            return;
+      function apply_transform(){
+        ctx.setTransform(1,0,0,1,0,0);
 
-          this.ctx.beginPath();
-          this.ctx.moveTo( this.pts[0][0], this.pts[0][1] );
-          for(var i=1; i<this.pts.length; i++) {
-            this.ctx.lineTo( this.pts[i][0], this.pts[i][1] );
-          }
-          this.ctx.lineWidth=0.000005;
-          this.ctx.stroke();
+        var xscale = canvas.width/(rr-ll);
+        var yscale = canvas.height/(bb-tt);
+
+        ctx.translate( -ll*xscale, -tt*yscale );
+        ctx.scale(xscale,yscale);
+      }
+      function redraw() {
+        ctx.clearRect(ll,bb,(rr-ll),(tt-bb));
+        ctx.strokeStyle="red";
+        draw_tree(ctx,tree);
+        ctx.strokeStyle="black";
+
+        ctx.lineWidth=0.00005; 
+        for(tile in tiles){
+          tiles[tile].draw(ctx);
         }
-        this.drawLast = function() {
-          if( this.pts.length < 2 )
-            return;
-
-          this.ctx.beginPath();
-          this.ctx.moveTo( this.pts[this.pts.length-2][0], this.pts[this.pts.length-2][1] );
-          this.ctx.lineTo( this.pts[this.pts.length-1][0], this.pts[this.pts.length-1][1] );
-          this.ctx.stroke();
-        }
-
       }
 
-        function apply_transform(){
-          ctx.setTransform(1,0,0,1,0,0);
+      function fetchTiles() {
 
-          var xscale = canvas.width/(rr-ll);
-          var yscale = canvas.height/(bb-tt);
+        if((rr-ll)/res > 20 || (tt-bb)/res > 20)
+          return; //too big
 
-          ctx.translate( -ll*xscale, -tt*yscale );
-          ctx.scale(xscale,yscale);
-        }
-        function redraw() {
-          //ctx.clearRect( ll,tt,(rr-ll),(bb-tt) );
-          ctx.clearRect(ll,bb,(rr-ll),(tt-bb));
-          ctx.strokeStyle="red";
-          draw_tree(ctx,tree);
-          ctx.strokeStyle="black";
+        var xstart = (Math.round(Math.floor(ll/res)*res*1000)/1000);
+        var ystart = (Math.round(Math.floor(bb/res)*res*1000)/1000);
+        var x = xstart;
+        var y = ystart;
 
-          ctx.lineWidth=0.00005; 
-          for(tile in tiles){
-            tiles[tile].draw(ctx);
+        while(x<rr){
+          while(y<tt){
+            var tilekey = x.toFixed(2)+":"+y.toFixed(2);
+            if( tiles[tilekey]===undefined ) {
+              console.log( "new tile "+tilekey );
+              tiles[tilekey]=new Tile(x,y,res,res);
+              tiles[tilekey].fetch(ctx, graph);
+            } 
+            y += res;
           }
+          y = ystart;
+          x += res;
         }
+      }
 
-        function fetchTiles() {
-
-          if((rr-ll)/res > 20 || (tt-bb)/res > 20)
-            return; //too big
-
-          var xstart = (Math.round(Math.floor(ll/res)*res*1000)/1000);
-          var ystart = (Math.round(Math.floor(bb/res)*res*1000)/1000);
-          var x = xstart;
-          var y = ystart;
-
-          while(x<rr){
-            while(y<tt){
-              var tilekey = x.toFixed(2)+":"+y.toFixed(2);
-              if( tiles[tilekey]===undefined ) {
-                console.log( "new tile "+tilekey );
-                tiles[tilekey]=new Tile(x,y,res,res);
-                tiles[tilekey].fetch(ctx, graph);
-              } 
-              y += res;
-            }
-            y = ystart;
-            x += res;
-          }
-
-        }
       $(document).ready( function() {
 
 
