@@ -20,9 +20,6 @@
       var bb=42.3594;
       var tt=bb+portheight;//42.37;
 
-      var patha;
-      var pathb;
-
       var res=0.02;
       var tiles={};
 
@@ -96,15 +93,6 @@
         if(!way.loc[0][0] || !way.loc[0][1])
           return;
 
-        /*
-        ctx.beginPath();
-        ctx.moveTo(way.loc[0][0],way.loc[0][1]);
-        for(var j=1; j<way.loc.length; j++){
-          if(!way.loc[j][0] || !way.loc[j][1])
-            continue;
-          ctx.lineTo(way.loc[j][0], way.loc[j][1]);
-        }
-        ctx.stroke();*/
         draw_linestring( ctx, way.loc );
       }
 
@@ -356,14 +344,6 @@
         }
 
         this.draw = function(ctx, drawways){
-          /*
-          ctx.beginPath();
-          ctx.moveTo(ll,bb);
-          ctx.lineTo(ll+ww,bb);
-          ctx.lineTo(ll+ww,bb+hh);
-          ctx.lineTo(ll,bb+hh);
-          ctx.lineTo(ll,bb);
-          ctx.stroke();*/
 
           if(drawways!==false){
             for(var i=0; i<this.ways.length; i++){
@@ -558,10 +538,6 @@
         ctx.lineWidth=0.000005;
         ctx.lineCap="round";
        
-        patha = new Path(ctx);
-        patha.pts=[[ll,bb],[rr,tt]];
-        pathb = new Path(ctx);
-        pathb.pts=[[ll,tt],[rr,bb]];
         apply_transform();
         redraw();
         fetchTiles();
