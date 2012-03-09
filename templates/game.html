@@ -20,7 +20,7 @@
       var bb=42.3594;
       var tt=bb+portheight;//42.37;
 
-      var res=0.02;
+      var tilewidth=0.02; // geographical units
       var tiles={};
 
       var dijkstra;
@@ -426,11 +426,11 @@
 
       function fetchTiles() {
 
-        if((rr-ll)/res > 20 || (tt-bb)/res > 20)
+        if((rr-ll)/tilewidth > 20 || (tt-bb)/tilewidth > 20)
           return; //too big
 
-        var xstart = (Math.round(Math.floor(ll/res)*res*1000)/1000);
-        var ystart = (Math.round(Math.floor(bb/res)*res*1000)/1000);
+        var xstart = (Math.round(Math.floor(ll/tilewidth)*tilewidth*1000)/1000);
+        var ystart = (Math.round(Math.floor(bb/tilewidth)*tilewidth*1000)/1000);
         var x = xstart;
         var y = ystart;
 
@@ -439,13 +439,13 @@
             var tilekey = x.toFixed(2)+":"+y.toFixed(2);
             if( tiles[tilekey]===undefined ) {
               console.log( "new tile "+tilekey );
-              tiles[tilekey]=new Tile(x,y,res,res);
+              tiles[tilekey]=new Tile(x,y,tilewidth,tilewidth);
               tiles[tilekey].fetch(ctx, graph);
             } 
-            y += res;
+            y += tilewidth;
           }
           y = ystart;
-          x += res;
+          x += tilewidth;
         }
       }
 
@@ -554,8 +554,8 @@
         }
 
         function gettilekey(x,y){
-          var xstart = (Math.round(Math.floor(x/res)*res*1000)/1000);
-          var ystart = (Math.round(Math.floor(y/res)*res*1000)/1000);
+          var xstart = (Math.round(Math.floor(x/tilewidth)*tilewidth*1000)/1000);
+          var ystart = (Math.round(Math.floor(y/tilewidth)*tilewidth*1000)/1000);
 
           return xstart.toFixed(2)+":"+ystart.toFixed(2);
         }
