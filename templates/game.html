@@ -367,7 +367,8 @@
             if(!data)
               return;
             metathis.ways = data.value.ways;
- 
+
+            ctx.strokeStyle="black"; 
             metathis.draw(ctx);
 
             for(var i=0; i<data.value.ways.length; i++){
