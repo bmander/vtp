@@ -512,12 +512,6 @@
         redraw();
         fetchTiles();
 
-        canvas.onmousedown = function(ev) {
-        }
-        
-        canvas.onmouseup = function(ev) {
-        }
-
         document.onkeypress = function(ev) {
         }
         
@@ -526,29 +520,7 @@
         }
 
         canvas.onclick = function(ev) {
-
-          var exponent =  parseFloat($("#exponent")[0].value);
-
-          tree = {};
-          redraw();
-
-          var x = mapX(mouseX(ev));
-          var y = mapY(mouseY(ev)); 
-
-          var tile = tiles[gettilekey(x,y)];
-          var startnode = tile.nearestNode( x,y );
-     
-          if(dijkstra !== undefined){
-            dijkstra.stop();
-          }
-          dijkstra = new Dijkstra(startnode); 
-          dijkstra.run(exponent);
           
-          //while( !dijkstra.queue.empty() ){
-          //  dijkstra.step();
-          //}
-
-          //draw_tree(ctx,tree);
         }
 
         function gettilekey(x,y){
@@ -590,11 +562,37 @@
         function mapY(y) {
           return (y/canvas.height)*(bb-tt)+tt;
         }
+
+        var buttonstate={};
+
+        var clickpoint;
+        canvas.onmousedown = function(ev) {
+          clickpoint = [mouseX(ev),mouseY(ev)];
+          buttonstate[ev.button]=1;
+        }
         
+        canvas.onmouseup = function(ev) {
+          if( mouseX(ev)==clickpoint[0] && mouseY(ev)==clickpoint[1] ){
+            tree = {};
+            redraw();
 
+            var x = mapX(mouseX(ev));
+            var y = mapY(mouseY(ev)); 
 
+            var tile = tiles[gettilekey(x,y)];
+            var startnode = tile.nearestNode( x,y );
+     
+            if(dijkstra !== undefined){
+              dijkstra.stop();
+            }
+            dijkstra = new Dijkstra(startnode); 
+            dijkstra.run(0.35);
+          }
+          buttonstate[ev.button]=0;
+        }
+        
         canvas.onmousemove = function(ev){
-          if( ev.button==2 ) {
+          if( buttonstate[0]==1 ) {
             var deltax = mapX(mouseX(ev))-mapX(pmouseX);
             var deltay = mapY(mouseY(ev))-mapY(pmouseY);
             ll -= deltax;
@@ -627,10 +625,6 @@
   <body style="background-color:#ffeeee">
     <canvas style="float:left;background-color:#ffffff;image-rendering:optimizeSpeed" id="canvas" width="1000" height="1000"></canvas>
     <div style="float:left;cursor:default" id="commands">
-      <form>
-        exponent: <input id="exponent" value="0.35"><br>
-        label: <input id="scale"/>
-      </form>
       <div onclick="ll=-71.173370;rr=ll+portwidth;bb=42.289865;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Boston</div>
       <div onclick="ll=-122.41940;rr=ll+portwidth;bb=47.56367;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Seattle</div>
       <div onclick="ll=-122.747846;rr=ll+portwidth;bb=45.456993;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Portland</div>
