@@ -331,14 +331,14 @@
             var dists0 = dist(s0[0],s0[1],x,y);
             if(dists0<winnerdist){
               winnerdist = dists0;
-              winner=way.nodes[0];
+              winner=way.fromv;
             }
           
             var s1 = way.loc[way.loc.length-1];
             var dists1 = dist(s1[0],s1[1],x,y);
             if(dists1<winnerdist){
               winnerdist = dists1
-              winner=way.nodes[way.nodes.length-1];
+              winner=way.tov;
             }
           }
           return winner;
@@ -365,35 +365,34 @@
 
         this.fetch = function(ctx, graph){
           var metathis=this;
-          $.getJSON("/tile/"+this.tilekey(), function(data){
-            if(!data)
-              return;
-            metathis.ways = data.value.ways;
-
-            ctx.strokeStyle="black"; 
-            metathis.draw(ctx);
-
-            for(var i=0; i<data.value.ways.length; i++){
-              var way = data.value.ways[i];
-              if( way.loc.length<2 || way.nodes.length<2 ){
-                 continue;
-              }
-              graph.add( way.nodes[0], way.nodes[way.nodes.length-1], way );
-              if( way.keysvals.oneway !== "true" && way.keysvals.oneway !== "yes" ){
-                var revway = {reverse:true,loc:way.loc,keysvals:way.keysvals,id:way.id,nodes:way.nodes}
-                graph.add( way.nodes[way.nodes.length-1], way.nodes[0], revway );
-              }
-            }
-          });
 
           $.getJSON("/comptile/"+this.tilekey(), function(data){
+            if( data===null){
+              return;
+            }
+
             for( var i in data.value.ways ) {
               var way = data.value.ways[i];
               way.loc = uncompressloc( way.loc );
               way.keysvals = data.value.wayinfo[way.wayid];
               data.value.ways[i]=way;
             }
-            metathis.comp=data.value.ways;
+            metathis.ways=data.value.ways;
+            
+            ctx.strokeStyle="black"; 
+            metathis.draw(ctx);
+
+            for(var i=0; i<metathis.ways.length; i++){
+              var way = metathis.ways[i];
+              if( way.loc.length<2 ){
+                 continue;
+              }
+              graph.add( way.fromv, way.tov, way );
+              if( way.keysvals.oneway !== "true" && way.keysvals.oneway !== "yes" ){
+                var revway = {reverse:true,loc:way.loc,keysvals:way.keysvals,id:way.id,tov:way.fromv,fromv:way.tov}
+                graph.add( revway.fromv, revway.tov, revway );
+              }
+            }
           });
           
         }
