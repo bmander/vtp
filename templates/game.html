@@ -112,7 +112,7 @@
           var best_edge = this.queue.extract_min();
           var best_edge_orig=best_edge[0]['orig']
           var best_edge_dest=best_edge[0]['dest'];
-          ctx.strokeStyle="red";
+          ctx.strokeStyle="D40000";
           var best_edge_weight=best_edge[1];
 
           // stick that edge in the tree (destination points back to origin)
@@ -216,13 +216,13 @@
           if( branch['way'] ){
 
             if(branch.way.keysvals.highway==="footway" || branch.way.keysvals.highway==="path") {
-              ctx.strokeStyle="green";
+              ctx.strokeStyle="007007";
             } else if (branch.way.keysvals.bicycle==="designated") {
-              ctx.strokeStyle="purple"; 
+              ctx.strokeStyle="910088"; 
             } else if (branch.way.keysvals.highway==="cycleway") {
-              ctx.strokeStyle="blue";
+              ctx.strokeStyle="000BA8";
             } else {
-              ctx.strokeStyle="red";
+              ctx.strokeStyle="D40000";
             }
             
             if(branch['trunkyness']==0){
@@ -413,7 +413,7 @@
       }
       function redraw() {
         ctx.clearRect(ll*unitscale,bb*unitscale,(rr-ll)*unitscale,(tt-bb)*unitscale);
-        ctx.strokeStyle="red";
+        ctx.strokeStyle="D40000";
         draw_tree(ctx,tree);
         ctx.strokeStyle="black";
 
