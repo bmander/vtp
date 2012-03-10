@@ -23,7 +23,8 @@
       var tilewidth=0.02; // geographical units
       var tiles={};
 
-      var unitscale=100;
+      var unitscale=1000;
+      var lineproportion=0.00031;
 
       var dijkstra;
       var graph = new Graph();
@@ -81,7 +82,7 @@
 
       function draw_way(ctx, way, linewidth){
         if( linewidth === undefined ) {
-          ctx.lineWidth=0.000005*unitscale;
+          ctx.lineWidth=0.000005*Math.pow((rr-ll),0.5)*10*unitscale;
         } else {
           ctx.lineWidth=linewidth*unitscale;
         }
@@ -210,7 +211,7 @@
       }
 
       function draw_tree_branch(ctx,branch, exponent){
-          if( exponent === undefined ){ exponent = 0.5; }
+          if( exponent === undefined ){ exponent = 0.35; }
 
           if( branch['way'] ){
 
@@ -230,18 +231,18 @@
               if( branch.way.reverse ){
                 for(var i=1; i<segs.length; i++){
                   len += dist(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
-                  ctx.lineWidth=Math.pow(len,exponent)*0.0005*unitscale;
+                  ctx.lineWidth=Math.pow(len,exponent)*0.0005*unitscale*Math.pow((rr-ll),0.5)*5;
                   draw_linestring( ctx, [segs[i-1],segs[i]] );
                 }
               } else {
                 for(var i=segs.length-1; i>=1; i--){
                   len += dist(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
-                  ctx.lineWidth=Math.pow(len,exponent)*0.0005*unitscale;
+                  ctx.lineWidth=Math.pow(len,exponent)*0.0005*unitscale*Math.pow((rr-ll),0.5)*5;
                   draw_linestring( ctx, [segs[i-1],segs[i]] );
                 }
               }
             } else {
-              var branchwidth=Math.pow(branch['trunkyness'],exponent)*0.0005;
+              var branchwidth=Math.pow(branch['trunkyness'],exponent)*0.0005*Math.pow((rr-ll),0.5)*5;
               draw_way(ctx,branch['way'],branchwidth);
             }
        
@@ -416,7 +417,6 @@
         draw_tree(ctx,tree);
         ctx.strokeStyle="black";
 
-        ctx.lineWidth=0.00005*unitscale; 
         for(tile in tiles){
           tiles[tile].draw(ctx);
         }
@@ -627,7 +627,7 @@
     <canvas style="float:left;background-color:#ffffff;image-rendering:optimizeSpeed" id="canvas" width="1000" height="1000"></canvas>
     <div style="float:left;cursor:default" id="commands">
       <form>
-        exponent: <input id="exponent" value="0.5"><br>
+        exponent: <input id="exponent" value="0.35"><br>
         label: <input id="scale"/>
       </form>
       <div onclick="ll=-71.057339;rr=ll+portwidth;bb=42.359749;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Boston</div>
