@@ -26,12 +26,14 @@ function reducef(key, values){
   return {id:key,loc:null, count:n, ways:ways};
 }
 
-db.runCommand( { mapreduce: "osm_ways",
+db.runCommand( { mapreduce: "cop_osm_ways",
                  map:mapf,
                  reduce:reducef,
-                 out:"nodes_count"
+                 out:"cop_nodes_count"
                });
-*//*
+*/
+
+/*
 function mapf(){
   emit("loc"+this.id,{id:this.id,loc:this.loc,count:0,ways:[]});
 }
@@ -41,11 +43,14 @@ function reducef(key, values){
 }
 
 
-db.runCommand( { mapreduce: "osm_nodes",
+db.runCommand( { mapreduce: "cop_osm_nodes",
                  map: mapf,
                  reduce: reducef,
-                 out: {merge:"nodes_count"} } )
+                 out: {merge:"cop_nodes_count"} } )
+*/
 
+
+/*
 //merge loc and counts into one doc
 function mapf(){
   emit(this.value.id,this.value);
@@ -63,15 +68,15 @@ function reducef(key,values){
   return ret;
 }
 
-db.runCommand( {mapreduce: "nodes_count",
+db.runCommand( {mapreduce: "cop_nodes_count",
                 map: mapf,
                 reduce: reducef,
-                out: "nodes_joined"} );
+                out: "cop_nodes_joined"} );
 
-
-/*
 */
+
 /*
+
 //convert node documents into way documents
 function mapf(){
   if(this.value.count==0){
@@ -107,20 +112,28 @@ function reducef(key,values){
   return {nodes:nodes,keysvals:values[0].keysvals}
 }
 
-db.runCommand( {mapreduce:"nodes_joined",
+db.runCommand( {mapreduce:"cop_nodes_joined",
                 map:mapf,
                 reduce:reducef,
-                out:"presliced_ways"} );
+                out:"cop_presliced_ways"} );
 */
 
 /*
-
 //split up presplit ways
 function mapf(){
+  if(!this.value.nodes[0]){
+    print( this );
+    return;
+  }
+
   var seg = {'nodes':[this.value.nodes[0].id],'loc':[this.value.nodes[0].loc],'keysvals':this.value.keysvals,'id':this._id};
   var cut = 0;
   var cuts=0;
   for(var i=1; i<this.value.nodes.length-1; i++){
+    if(!this.value.nodes[i]){
+      print( this );
+      return;
+    }
     seg.nodes.push( this.value.nodes[i].id );
     seg.loc.push( this.value.nodes[i].loc ); 
     if(this.value.nodes[i].count>1){
@@ -129,6 +142,11 @@ function mapf(){
       cuts += 1;
       cut = i;
     }
+  }
+
+  if(!this.value.nodes[i]){
+    print( this );
+    return;
   }
   seg.nodes.push(this.value.nodes[i].id);
   seg.loc.push(this.value.nodes[i].loc);
@@ -140,10 +158,10 @@ function reducef(key,values){
   return values[0];
 }
 
-db.runCommand( {mapreduce:"presliced_ways",
+db.runCommand( {mapreduce:"cop_presliced_ways",
                 map:mapf,
                 reduce:reducef,
-                out:"sliced_ways"} );
+                out:"cop_sliced_ways"} );
 */
 
 /*
@@ -189,12 +207,13 @@ function reducef(key,values){
   return {ways:ret};
 }
 
-db.runCommand({mapreduce:"sliced_ways",
+db.runCommand({mapreduce:"cop_sliced_ways",
                map:mapf,
                reduce:reducef,
-               out:"tiled_ways"})
+               out:"cop_tiled_ways"})
+*/
 
-/**/
+
 
 //chunk split ways into tiles
 function mapf(){
@@ -301,8 +320,9 @@ function reducef(key,values){
   return {ways:ret,wayinfo:wayinfo};
 }
 
-db.runCommand({mapreduce:"sliced_ways",
+db.runCommand({mapreduce:"cop_sliced_ways",
                map:mapf,
                reduce:reducef,
-               out:"simple_tiles"})
+               out:{"merge":"simple_tiles"}})
+
 
