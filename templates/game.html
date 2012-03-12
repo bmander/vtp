@@ -177,6 +177,14 @@
         this.stop = function(){
           this.running=false;
         }
+
+        this.toggle = function(exponent){
+          if(this.running){
+            this.stop();
+          } else {
+            this.run(exponent);
+          }
+        }
       }
 
       function interpolate( ary, spacing ) {
@@ -678,6 +686,13 @@
 
           pmouseX=mouseX(ev);
           pmouseY=mouseY(ev);
+        }
+
+        document.onkeypress = function(ev){
+          if(dijkstra!==undefined && ev.charCode==32){
+            dijkstra.toggle(0.35);
+          }
+          return false;
         }
 
         canvas.onmouseout = function(ev) {
