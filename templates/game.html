@@ -826,7 +826,7 @@ a:hover {text-decoration: underline; color: red;}
   </head>
   <body style="background-color:#ffeeee">
     <canvas style="float:left;background-color:#ffffff;image-rendering:optimizeSpeed" id="canvas" width="1000" height="1000"></canvas>
-    <div style="float:left;cursor:default;width:400px;padding-left:10px;" id="commands">
+    <div style="float:left;cursor:default;width:400px;padding-left:10px;left:1000px" id="commands">
       <h2>What's all this?</h2>
       <p><b>Click</b> to see the shortest path from that point to everywhere else. <b>Left-click</b> drag to pan, and <b>mouse-wheel</b> or <b>n</b>/<b>m</b> buttons to zoom. <b>Spacebar</b> stops and starts the tree growth.</p>
       <p>Blue lines are bike paths. Green lines are all other paths. Purple is bicycle-designated roads, and red is everything else.</p>
@@ -836,10 +836,10 @@ a:hover {text-decoration: underline; color: red;}
       <p>This thing is a memory hog. Panning in particular will seriously crash your browser after a few minutes. I'll see what I can do.</p>
       <h2>Some places to go</h2>
       <ul> 
-      <li onclick="ll=-71.173370;rr=ll+portwidth;bb=42.289865;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a href="javascript:'false'">Boston</a></li>
-      <li onclick="ll=-122.41940;rr=ll+portwidth;bb=47.56367;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a href="javascript:'false'">Seattle</a></li>
-      <li onclick="ll=-122.747846;rr=ll+portwidth;bb=45.456993;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a href="javascript:'false'">Portland</a></li>
-      <li onclick="ll=-122.418423;rr=ll+portwidth;bb=37.778788;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a href="javascript:'false'">San Francisco</a></li>
+      <li onclick="ll=-71.173370;rr=ll+portwidth;bb=42.289865;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Boston</a></li>
+      <li onclick="ll=-122.41940;rr=ll+portwidth;bb=47.56367;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Seattle</a></li>
+      <li onclick="ll=-122.747846;rr=ll+portwidth;bb=45.456993;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Portland</a></li>
+      <li onclick="ll=-122.521305;rr=ll+portwidth;bb=37.704195;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">San Francisco</a></li>
       </ul>
     <div>
   </body>
