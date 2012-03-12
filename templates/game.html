@@ -813,6 +813,9 @@ a:hover {text-decoration: underline; color: red;}
         }
 
         canvas.onmouseout = function(ev) {
+          for(var button in buttonstate){
+            buttonstate[button]=0;
+          }
         }
 
         if (window.addEventListener)
@@ -840,6 +843,9 @@ a:hover {text-decoration: underline; color: red;}
       <li onclick="ll=-122.41940;rr=ll+portwidth;bb=47.56367;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Seattle</a></li>
       <li onclick="ll=-122.747846;rr=ll+portwidth;bb=45.456993;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Portland</a></li>
       <li onclick="ll=-122.521305;rr=ll+portwidth;bb=37.704195;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">San Francisco</a></li>
+      <li onclick="ll=-74.046478;rr=ll+portwidth;bb=40.720721;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">New York City</a></li>
+      <li onclick="ll=12.509308;rr=ll+portwidth;bb=55.658028;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Copenhagen</a></li>
+      <li onclick="ll=-97.828548;rr=ll+portwidth;bb=30.20249;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Austin</a></li>
       </ul>
     <div>
   </body>
