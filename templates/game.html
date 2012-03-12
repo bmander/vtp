@@ -1,5 +1,8 @@
 <html>
   <head>
+<style type="text/css">
+li:hover {text-decoration: underline; color: red;}
+</style>
     <!--<script src="/static/js/processing.js"></script>-->
     <script src="/static/js/jquery.js"></script>
     <!--<script src="/static/js/socket.io.js"></script>-->
@@ -22,6 +25,9 @@
 
       var tilewidth=0.02; // geographical units
       var tiles={};
+      var tilequeue = new Queue();
+      var ntiles=0;
+      var tilelimit=100;
 
       var unitscale=1000;
       var lineproportion=0.00031;
@@ -317,10 +323,29 @@
           return min;
         }
 
+        this.max = function() {
+          var max=null;
+          var maxweight=-10000000;
+          for( var item in this.data ){
+            if ( this.data[item][1] > maxweight ) {
+              maxweight = this.data[item][1];
+              min=item; 
+            }
+          }
+          return min;
+        }
+
         this.extract_min = function() {
           var minkey = this.min();
           var ret = this.data[minkey];
           delete this.data[minkey];
+          return ret;
+        }
+
+        this.extract_max = function() {
+          var maxkey = this.max();
+          var ret = this.data[maxkey];
+          delete this.data[maxkey];
           return ret;
         }
 
@@ -492,19 +517,77 @@
         var x = xstart;
         var y = ystart;
 
+        var newtiles=false;
         while(x<rr){
           while(y<tt){
             var tilekey = x.toFixed(2)+":"+y.toFixed(2);
             if( tiles[tilekey]===undefined ) {
-              console.log( "new tile "+tilekey );
+              newtiles=true;
+
+              //console.log( "new tile "+tilekey );
               tiles[tilekey]=new Tile(x,y,tilewidth,tilewidth);
               tiles[tilekey].fetch(ctx, graph);
+              tilequeue.insert( tiles[tilekey], tilekey, 0 );
+              ntiles += 1;
             } 
             y += tilewidth;
           }
           y = ystart;
           x += tilewidth;
         }
+
+        if(newtiles){
+          clean_tiles();
+        }
+      }
+
+      function clean_tiles(){
+        /*
+        console.log( "clean tiles" );
+        //increment every tile in the tilequeue
+        for( var tilekey in tilequeue.data ){
+          tilequeue.data[tilekey][1] += 1;
+        }
+
+        //set priority of all tiles in viewport to 0
+        var xstart = (Math.round(Math.floor(ll/tilewidth)*tilewidth*1000)/1000);
+        var ystart = (Math.round(Math.floor(bb/tilewidth)*tilewidth*1000)/1000);
+        var x = xstart;
+        var y = ystart;
+
+        var newtiles=false;
+        while(x<rr){
+          while(y<tt){
+            var tilekey = x.toFixed(2)+":"+y.toFixed(2);
+            if(tilequeue.data[tilekey]!==undefined){
+              tilequeue.data[tilekey][1]=0;
+            }
+            y += tilewidth;
+          }
+          y = ystart;
+          x += tilewidth;
+        }
+
+        // remove spare tiles
+        //console.log( ntiles+"/"+tilelimit+" tiles" );
+        if( ntiles > tilelimit) {
+          var overage = ntiles-tilelimit;
+          //console.log( "delete "+overage+" tiles" );
+          for(var i=0; i<overage; i++){
+            var tile = tilequeue.extract_max()[0];
+            //console.log( tile.tilekey() );
+
+            // scour the tiles's ways from the graph
+            for(var j in tile.ways){
+              delete graph.adj[tile.ways[j].fromv];
+            }
+
+            // delete the tile itself
+            delete tiles[tile.tilekey()];
+            ntiles -= 1;
+          }
+        }*/
+
       }
 
       function undiffcompress( ary ) {
@@ -556,7 +639,10 @@
         function handle(delta, x, y) {
 
           var scalefactor = Math.pow(1.1,-delta);
+          zoom( scalefactor,x,y );
+        }
 
+        function zoom(scalefactor,x,y){
           var newwidth = (rr-ll)*scalefactor;
           var newheight = (bb-tt)*scalefactor;
 
@@ -716,6 +802,13 @@
           if(dijkstra!==undefined && ev.charCode==32){
             dijkstra.toggle(0.35);
           }
+
+          if( ev.charCode==109 ){
+            zoom(1.1,500,500);
+          } else if( ev.charCode==110 ){
+            zoom(1/1.1,500,500);
+          }
+
           return false;
         }
 
@@ -733,11 +826,21 @@
   </head>
   <body style="background-color:#ffeeee">
     <canvas style="float:left;background-color:#ffffff;image-rendering:optimizeSpeed" id="canvas" width="1000" height="1000"></canvas>
-    <div style="float:left;cursor:default" id="commands">
-      <div onclick="ll=-71.173370;rr=ll+portwidth;bb=42.289865;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Boston</div>
-      <div onclick="ll=-122.41940;rr=ll+portwidth;bb=47.56367;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Seattle</div>
-      <div onclick="ll=-122.747846;rr=ll+portwidth;bb=45.456993;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Portland</div>
-      <div onclick="ll=-122.418423;rr=ll+portwidth;bb=37.778788;tt=bb+portheight;apply_transform();fetchTiles();redraw();">San Francisco</div>
+    <div style="float:left;cursor:default;width:400px;padding-left:10px;" id="commands">
+      <h2>What's all this?</h2>
+      <p>Click to see the shortest path from that point to everywhere else. Left-click drag to pan, and mouse-wheel or <b>n</b>/<b>m</b> buttons to zoom.</p>
+      <p>Blue lines are bike paths. Green lines are all other paths. Purple is bicycle-designated roads, and red is everything else.</p>
+      <h2>Who made it?</h2>
+      <p>The <a href="http://www.openstreetmap.org/">OpenStreetMap</a> community compiled the map data. This data viz was made by <a href="http://bmander.com/">Brandon Martin-Anderson</a> (bmander@mit.edu), developing some ideas at the <a href="http://www.media.mit.edu/">MIT Media Lab</a>. Fork this project on <a href="https://github.com/bmander/vtp">Github</a>.</p>
+      <h2>A warning!</h2>
+      <p>This thing is a memory hog. Panning in particular will seriously crash your browser after a few minutes. I'll see what I can do.</p>
+      <h2>Some places to go</h2>
+      <ul> 
+      <li onclick="ll=-71.173370;rr=ll+portwidth;bb=42.289865;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Boston</li>
+      <li onclick="ll=-122.41940;rr=ll+portwidth;bb=47.56367;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Seattle</li>
+      <li onclick="ll=-122.747846;rr=ll+portwidth;bb=45.456993;tt=bb+portheight;apply_transform();fetchTiles();redraw();">Portland</li>
+      <li onclick="ll=-122.418423;rr=ll+portwidth;bb=37.778788;tt=bb+portheight;apply_transform();fetchTiles();redraw();">San Francisco</li>
+      </ul>
     <div>
   </body>
 </html>
