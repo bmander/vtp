@@ -333,11 +333,13 @@
       }
       
 
-      function Tile(ll,bb,ww,hh){
-        this.ll=ll;
-        this.bb=bb;
-        this.ww=ww;
-        this.hh=hh;
+      function Tile(inll,inbb,inww,inhh){
+        this.ll=inll;
+        this.bb=inbb;
+        this.ww=inww;
+        this.hh=inhh;
+        this.rr=inll+inww;
+        this.tt=inbb+inhh;
 
         this.ways = []
 
@@ -370,6 +372,12 @@
         }
 
         this.draw = function(ctx, drawways){
+          if( this.rr < ll ||
+              this.ll > rr ||
+              this.bb > tt ||
+              this.tt < bb ) {
+            return;
+          }
 
           if(drawways!==false){
             for(var i=0; i<this.ways.length; i++){
@@ -453,9 +461,25 @@
         draw_tree(ctx,tree);
         ctx.strokeStyle="black";
 
-        for(tile in tiles){
-          tiles[tile].draw(ctx);
+        var xstart = (Math.round(Math.floor(ll/tilewidth)*tilewidth*1000)/1000);
+        var ystart = (Math.round(Math.floor(bb/tilewidth)*tilewidth*1000)/1000);
+        var x = xstart;
+        var y = ystart;
+
+        while(x<rr){
+          while(y<tt){
+            var tilekey = x.toFixed(2)+":"+y.toFixed(2);
+            if( tiles[tilekey]!==undefined ) {
+              tiles[tilekey].draw(ctx);
+            } 
+            y += tilewidth;
+          }
+          y = ystart;
+          x += tilewidth;
         }
+        //for(tile in tiles){
+        //  tiles[tile].draw(ctx);
+        //}
       }
 
       function fetchTiles() {
