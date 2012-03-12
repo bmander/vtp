@@ -1,14 +1,25 @@
 var pbf = require("./pbf.js");
 var mongodb = require('mongodb');
 
-var path="/storage/maps/portland.osm.pbf";
+var path="/storage/maps/austin.osm.pbf";
 var fileblockfile = new pbf.FileBlockFile(path);
 var pbffile = new pbf.PBFFile(fileblockfile);
+
+function clean_keysvals(keysvals){
+  // key names may not contian "." characters
+  for(var key in keysvals){
+    if( key.indexOf(".") != -1 ){
+      var val=keysvals[key];
+      delete keysvals[key];
+      keysvals[key.replace(/\./g,"-")]=val;
+    }
+  }
+}
 
 // open connection to mongo server
 var server = new mongodb.Db('test', new mongodb.Server("127.0.0.1", 27017, {}))
 server.open(function(err, client) {
-  var collection = new mongodb.Collection(client,"osm_ways");
+  var collection = new mongodb.Collection(client,"cop_osm_ways");
 
   // collect a list of ways from the pbffile
   var i=0;
@@ -17,6 +28,8 @@ server.open(function(err, client) {
     i+=1;
     if(i%10000==0)
       console.log(i);
+
+    clean_keysvals( way.keysvals );
     ways.push(way);
 
   // when done, insert them into mongodb
@@ -26,7 +39,7 @@ server.open(function(err, client) {
 
     // insert 100K at a time via tail recursion
     i=0;
-    var slicesize=100000;
+    var slicesize=50000;
     var foo=function(){
       if( i>ways.length ){
         console.log("done");
