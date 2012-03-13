@@ -40,7 +40,7 @@ var rad=function(x){
   return Math.PI*(x/180.0);
 }
 
-function distVincenty(lat1, lon1, lat2, lon2) {
+function distVincenty(lon1, lat1, lon2, lat2) {
   var a = 6378137, b = 6356752.314245,  f = 1/298.257223563;  // WGS-84 ellipsoid params
   var L = rad(lon2-lon1);
   var U1 = Math.atan((1-f) * Math.tan(rad(lat1)));
@@ -75,7 +75,7 @@ function distVincenty(lat1, lon1, lat2, lon2) {
     B/6*cos2SigmaM*(-3+4*sinSigma*sinSigma)*(-3+4*cos2SigmaM*cos2SigmaM)));
   var s = b*A*(sigma-deltaSigma);
   
-  s = s.toFixed(3); // round to 1mm precision
+  s = parseFloat(s.toFixed(3)); // round to 1mm precision
   return s;
   
   // note: to return initial/final bearings in addition to distance, use something like:
@@ -118,19 +118,18 @@ function distVincenty(lat1, lon1, lat2, lon2) {
               edge.loc[i+1][1]===null ){
             return null;
           }
-          ret += dist( edge.loc[i][0], edge.loc[i][1], edge.loc[i+1][0], edge.loc[i+1][1] );
-          //ret += distVincenty( edge.loc[i][1], edge.loc[i][0], edge.loc[i+1][1], edge.loc[i+1][0] );
+          ret += distVincenty( edge.loc[i][0], edge.loc[i][1], edge.loc[i+1][0], edge.loc[i+1][1] );
         }
 
         var corner_penalty=0.0;
         if(prev_edge && prev_edge.keysvals.name!==edge.keysvals.name){
-          corner_penalty=0.00005;
+          corner_penalty=100;
         }
 
         var hill_penalty=0;
         if( edge.rise !== undefined ){
           if( edge.keysvals.bridge !== "yes" && edge.keysvals.bridge !== "true" ) {
-            hill_penalty=edge.rise*0.001;
+            hill_penalty=edge.rise*100;
           }
         } 
 
@@ -294,6 +293,8 @@ function distVincenty(lat1, lon1, lat2, lon2) {
       }
 
       function draw_tree_branch(ctx,branch, exponent){
+          var thicken=0.000007;
+
           if( exponent === undefined ){ exponent = 0.35; }
 
           if( branch['way'] ){
@@ -317,19 +318,19 @@ function distVincenty(lat1, lon1, lat2, lon2) {
               var len = 0;
               if( branch.way.reverse ){
                 for(var i=1; i<segs.length; i++){
-                  len += dist(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
-                  ctx.lineWidth=Math.pow(len,exponent)*0.0005*unitscale*Math.pow((rr-ll),0.5)*5;
+                  len += distVincenty(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
+                  ctx.lineWidth=Math.pow(len,exponent)*thicken*unitscale*Math.pow((rr-ll),0.5)*5;
                   draw_linestring( ctx, [segs[i-1],segs[i]] );
                 }
               } else {
                 for(var i=segs.length-1; i>=1; i--){
-                  len += dist(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
-                  ctx.lineWidth=Math.pow(len,exponent)*0.0005*unitscale*Math.pow((rr-ll),0.5)*5;
+                  len += distVincenty(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
+                  ctx.lineWidth=Math.pow(len,exponent)*thicken*unitscale*Math.pow((rr-ll),0.5)*5;
                   draw_linestring( ctx, [segs[i-1],segs[i]] );
                 }
               }
             } else {
-              var branchwidth=Math.pow(branch['trunkyness'],exponent)*0.0005*Math.pow((rr-ll),0.5)*5;
+              var branchwidth=Math.pow(branch['trunkyness'],exponent)*thicken*Math.pow((rr-ll),0.5)*5;
               draw_way(ctx,branch['way'],branchwidth);
             }
        
