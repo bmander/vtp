@@ -1,47 +1,60 @@
 var fs = require('fs');
 
-var distVincenty=function(p1, p2) {
- 	    var a = 6378137, b = 6356752.3142,  f = 1/298.257223563;
- 	    var L = OpenLayers.Util.rad(p2.lon - p1.lon);
- 	    var U1 = Math.atan((1-f) * Math.tan(OpenLayers.Util.rad(p1.lat)));
- 	    var U2 = Math.atan((1-f) * Math.tan(OpenLayers.Util.rad(p2.lat)));
- 	    var sinU1 = Math.sin(U1), cosU1 = Math.cos(U1);
- 	    var sinU2 = Math.sin(U2), cosU2 = Math.cos(U2);
- 	    var lambda = L, lambdaP = 2*Math.PI;
- 	    var iterLimit = 20;
- 	    while (Math.abs(lambda-lambdaP) > 1e-12 && --iterLimit>0) {
- 	        var sinLambda = Math.sin(lambda), cosLambda = Math.cos(lambda);
- 	        var sinSigma = Math.sqrt((cosU2*sinLambda) * (cosU2*sinLambda) +
- 	        (cosU1*sinU2-sinU1*cosU2*cosLambda) * (cosU1*sinU2-sinU1*cosU2*cosLambda));
- 	        if (sinSigma==0) {
- 	            return 0;  // co-incident points
- 	        }
- 	        var cosSigma = sinU1*sinU2 + cosU1*cosU2*cosLambda;
- 	        var sigma = Math.atan2(sinSigma, cosSigma);
- 	        var alpha = Math.asin(cosU1 * cosU2 * sinLambda / sinSigma);
- 	        var cosSqAlpha = Math.cos(alpha) * Math.cos(alpha);
- 	        var cos2SigmaM = cosSigma - 2*sinU1*sinU2/cosSqAlpha;
- 	        var C = f/16*cosSqAlpha*(4+f*(4-3*cosSqAlpha));
- 	        lambdaP = lambda;
- 	        lambda = L + (1-C) * f * Math.sin(alpha) *
- 	        (sigma + C*sinSigma*(cos2SigmaM+C*cosSigma*(-1+2*cos2SigmaM*cos2SigmaM)));
- 	    }
- 	    if (iterLimit==0) {
- 	        return NaN;  // formula failed to converge
- 	    }
- 	    var uSq = cosSqAlpha * (a*a - b*b) / (b*b);
- 	    var A = 1 + uSq/16384*(4096+uSq*(-768+uSq*(320-175*uSq)));
- 	    var B = uSq/1024 * (256+uSq*(-128+uSq*(74-47*uSq)));
- 	    var deltaSigma = B*sinSigma*(cos2SigmaM+B/4*(cosSigma*(-1+2*cos2SigmaM*cos2SigmaM)-
- 	        B/6*cos2SigmaM*(-3+4*sinSigma*sinSigma)*(-3+4*cos2SigmaM*cos2SigmaM)));
- 	    var s = b*A*(sigma-deltaSigma);
- 	    var d = s.toFixed(3)/1000; // round to 1mm precision
- 	    return d;
- 	};
+var rad=function(x){
+  return Math.PI*(x/180.0);
+}
+
+function distVincenty(lat1, lon1, lat2, lon2) {
+  var a = 6378137, b = 6356752.314245,  f = 1/298.257223563;  // WGS-84 ellipsoid params
+  var L = rad(lon2-lon1);
+  var U1 = Math.atan((1-f) * Math.tan(rad(lat1)));
+  var U2 = Math.atan((1-f) * Math.tan(rad(lat2)));
+  var sinU1 = Math.sin(U1), cosU1 = Math.cos(U1);
+  var sinU2 = Math.sin(U2), cosU2 = Math.cos(U2);
+  
+  var lambda = L, lambdaP, iterLimit = 100;
+  do {
+    var sinLambda = Math.sin(lambda), cosLambda = Math.cos(lambda);
+    var sinSigma = Math.sqrt((cosU2*sinLambda) * (cosU2*sinLambda) + 
+      (cosU1*sinU2-sinU1*cosU2*cosLambda) * (cosU1*sinU2-sinU1*cosU2*cosLambda));
+    if (sinSigma==0) return 0;  // co-incident points
+    var cosSigma = sinU1*sinU2 + cosU1*cosU2*cosLambda;
+    var sigma = Math.atan2(sinSigma, cosSigma);
+    var sinAlpha = cosU1 * cosU2 * sinLambda / sinSigma;
+    var cosSqAlpha = 1 - sinAlpha*sinAlpha;
+    var cos2SigmaM = cosSigma - 2*sinU1*sinU2/cosSqAlpha;
+    if (isNaN(cos2SigmaM)) cos2SigmaM = 0;  // equatorial line: cosSqAlpha=0 (§6)
+    var C = f/16*cosSqAlpha*(4+f*(4-3*cosSqAlpha));
+    lambdaP = lambda;
+    lambda = L + (1-C) * f * sinAlpha *
+      (sigma + C*sinSigma*(cos2SigmaM+C*cosSigma*(-1+2*cos2SigmaM*cos2SigmaM)));
+  } while (Math.abs(lambda-lambdaP) > 1e-12 && --iterLimit>0);
+
+  if (iterLimit==0) return NaN  // formula failed to converge
+
+  var uSq = cosSqAlpha * (a*a - b*b) / (b*b);
+  var A = 1 + uSq/16384*(4096+uSq*(-768+uSq*(320-175*uSq)));
+  var B = uSq/1024 * (256+uSq*(-128+uSq*(74-47*uSq)));
+  var deltaSigma = B*sinSigma*(cos2SigmaM+B/4*(cosSigma*(-1+2*cos2SigmaM*cos2SigmaM)-
+    B/6*cos2SigmaM*(-3+4*sinSigma*sinSigma)*(-3+4*cos2SigmaM*cos2SigmaM)));
+  var s = b*A*(sigma-deltaSigma);
+  
+  s = s.toFixed(3); // round to 1mm precision
+  return s;
+  
+  // note: to return initial/final bearings in addition to distance, use something like:
+  var fwdAz = Math.atan2(cosU2*sinLambda,  cosU1*sinU2-sinU1*cosU2*cosLambda);
+  var revAz = Math.atan2(cosU1*sinLambda, -sinU1*cosU2+cosU1*sinU2*cosLambda);
+  return { distance: s, initialBearing: fwdAz.toDeg(), finalBearing: revAz.toDeg() };
+}
 
 function split_line_segment(lng1, lat1, lng2, lat2, max_section_length){
     // Split line segment defined by (x1, y1, x2, y2) into a set of points 
     // (x,y,displacement) spaced less than max_section_length apart
+
+    if(lng1===null || lat1===null || lng2===null || lat2===null){
+      return null;
+    }
    
     var ret = [];
  
@@ -56,7 +69,7 @@ function split_line_segment(lng1, lat1, lng2, lat2, max_section_length){
     
     var geolen = Math.pow(Math.pow((lat2-lat1),2) + Math.pow((lng2-lng1),2),0.5);
     var section_len = geolen/n_sections;
-    var street_vector = (lng2-lng1, lat2-lat1);
+    var street_vector = [lng2-lng1, lat2-lat1];
     var unit_vector = [street_vector[0]/geolen, street_vector[1]/geolen];
     
     for(var i=0; i<n_sections+1; i++){
@@ -76,6 +89,9 @@ function split_line_string(points, max_section_length){
       var pt1 = points[0];
       var pt2 = points[1];
       var split_seg = split_line_segment(pt1[0], pt1[1], pt2[0], pt2[1], max_section_length);
+      if( split_seg===null ){
+        return null; // if any input point is null, give up
+      }
       split_segs.push( split_seg );
     }
     
@@ -86,14 +102,14 @@ function split_line_string(points, max_section_length){
       var split_seg = split_segs[i];
 
       for(var j=0; j<split_seg.length-1; j++){
-        ret.push( [split_seg[i][0], split_seg[i][1], split_Seg[i][2]+segstart_s] );
+        ret.push( [split_seg[j][0], split_seg[j][1], split_seg[j][2]+segstart_s] );
       }
         
       if(i==split_segs.length-1){
-        ret.append( [split_seg[split_seg.length][0], split_seg[split_seg.length][1], split_seg[split_seg.length][2]+segstart_s] )
+        ret.push( [split_seg[split_seg.length-1][0], split_seg[split_seg.length-1][1], split_seg[split_seg.length-1][2]+segstart_s] )
       }
         
-      segstart_s += split_seg[split_seg.length][2];
+      segstart_s += split_seg[split_seg.length-1][2];
     }
             
     return ret;
@@ -207,17 +223,21 @@ function GridFloat(basename){
         
     return (lm-um)*celltop+um;
   }
-  
+
   this.profile = function(points, resolution){
     if(resolution===undefined){
       resolution=10;
     }
 
     var splitted = split_line_string( points, resolution );
+    if( splitted===null ){
+      return null; // if the line splitter failed, give up
+    } 
+
     var ret = [];
     for(var i in splitted){
       var pt = splitted[i];
-      ret.push( [pt[2],this.elevation(pt[0]),pt[1]] );
+      ret.push( [pt[2],this.elevation(pt[0],pt[1])] );
     }
     
     return ret;
