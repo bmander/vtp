@@ -21,6 +21,8 @@ app.get('/static/js/jquery.js', function(req,res){
 server.open(function(err, client) {
   var collection = new mongodb.Collection(client,"tiled_ways");
   var compcoll = new mongodb.Collection(client,"simple_tiles");
+  var profilecoll = new mongodb.Collection(client,"profiles");
+
   app.get('/tile/*', function(req,res) {
     res.contentType("json");
     var cursor = collection.find({_id:req.params[0]}).limit(1);
@@ -32,6 +34,14 @@ server.open(function(err, client) {
   app.get('/comptile/*', function(req,res) {
     res.contentType("json");
     var cursor = compcoll.find({_id:req.params[0]}).limit(1);
+    cursor.nextObject( function(err,doc) {
+      res.send( doc );
+    });
+  });
+  
+  app.get('/profile/*', function(req,res) {
+    res.contentType("json");
+    var cursor = profilecoll.find({id:req.params[0]}).limit(1);
     cursor.nextObject( function(err,doc) {
       res.send( doc );
     });
