@@ -86,8 +86,8 @@ function split_line_string(points, max_section_length){
     //Split each line segment in the linestring into segment smaller than max_section_length
     var split_segs = [];
     for(var i=0; i<points.length-1; i++){
-      var pt1 = points[0];
-      var pt2 = points[1];
+      var pt1 = points[i];
+      var pt2 = points[i+1];
       var split_seg = split_line_segment(pt1[0], pt1[1], pt2[0], pt2[1], max_section_length);
       if( split_seg===null ){
         return null; // if any input point is null, give up
