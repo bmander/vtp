@@ -36,6 +36,10 @@ a:hover {text-decoration: underline; color: red;}
       var graph = new Graph();
       var tree;
 
+      var ntiles=0;
+      var mode="route";
+      var modebuttons=[];
+
 var rad=function(x){
   return Math.PI*(x/180.0);
 }
@@ -88,44 +92,57 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         ctx.clearRect(ll,bb,(rr-ll),(tt-bb));
       }
 
+      function linestring_dist(ary){
+        var ret = 0;
+        if(ary.length<2){
+          return 0;
+        }
+        for(var i=0; i<ary.length-1; i++) {
+          if( ary[i][0]===null ||
+              ary[i][1]===null || 
+              ary[i+1][0]===null ||
+              ary[i+1][1]===null ){
+            return null;
+          }
+          ret += distVincenty( ary[i][0], ary[i][1], ary[i+1][0], ary[i+1][1] );
+        }
+        return ret;
+      }
+
       function edge_weight(prev_edge, edge) {
+        // don't go against traffic if it's not allowed for bikes
         if( edge.keysvals["oneway:bicycle"]==="yes" && edge.reverse ){
           return null;
         }
 
-        var mult=1;
+        // ignore freeways
         if( edge.keysvals.highway === "motorway" || edge.keysvals.highway === "motorway_link"){
           return null;
         }
+
+        // various street-type preferences 
+        var mult=1;
         if( edge.keysvals.highway === "footway" || edge.keysvals.highway === "cycleway" ) {
           mult = 1.0//;0.75;
         } else if( edge.keysvals.highway === "primary" ) {
           mult = 1.0//;1.5;
-        } else if( edge.keysvals.bicycle === "designated" ) {
+        } else if( edge.keysvals.bicycle === "designated" || edge.keysvals.cycleway === "lane" ) {
           mult = 0.7;
         } else if( edge.keysvals.highway === "steps" ) {
           mult = 10;
         }
 
-        var ret = 0;
-        if(edge.loc.length<2){
-          return 0;
-        }
-        for(var i=0; i<edge.loc.length-1; i++) {
-          if( edge.loc[i][0]===null ||
-              edge.loc[i][1]===null || 
-              edge.loc[i+1][0]===null ||
-              edge.loc[i+1][1]===null ){
-            return null;
-          }
-          ret += distVincenty( edge.loc[i][0], edge.loc[i][1], edge.loc[i+1][0], edge.loc[i+1][1] );
-        }
+        // determine road length
+        var ret = linestring_dist(edge.loc);
+        if(ret===null){ return null; }
 
+        // corner penalty
         var corner_penalty=0.0;
         if(prev_edge && prev_edge.keysvals.name!==edge.keysvals.name){
           corner_penalty=100;
         }
-
+        
+        // hill penalty
         var hill_penalty=0;
         if( edge.rise !== undefined ){
           if( edge.keysvals.bridge !== "yes" && edge.keysvals.bridge !== "true" ) {
@@ -214,6 +231,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
             // insert into queue
             this.queue.insert( {'orig':best_edge_dest, 'dest':cand_dest_node,'way':cand_edge_data, 'edgeweight':cand_edge_weight}, cand_dest_node, best_edge_weight+cand_edge_weight );
+            document.getElementById("queuesize").innerHTML=this.queue.size;
           }
         }
 
@@ -301,7 +319,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
             if(branch.way.keysvals.highway==="footway" || branch.way.keysvals.highway==="path") {
               ctx.strokeStyle="007007";
-            } else if (branch.way.keysvals.bicycle==="designated") {
+            } else if (branch.way.keysvals.bicycle==="designated" || branch.way.keysvals.cycleway==="lane") {
               ctx.strokeStyle="910088"; 
             } else if (branch.way.keysvals.highway==="cycleway") {
               ctx.strokeStyle="000BA8";
@@ -357,8 +375,11 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
       function Queue(){
         this.data = {};
+        this.size=0;
         
         this.insert = function(item,label,prio){
+          this.size += 1;
+
           if( this.data[label] !== undefined ) {
             if(this.data[label][1]>prio){
               this.data[label] = [item,prio];
@@ -393,6 +414,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         }
 
         this.extract_min = function() {
+          this.size -= 1;
           var minkey = this.min();
           var ret = this.data[minkey];
           delete this.data[minkey];
@@ -400,6 +422,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         }
 
         this.extract_max = function() {
+          this.size -= 1;
           var maxkey = this.max();
           var ret = this.data[maxkey];
           delete this.data[maxkey];
@@ -585,7 +608,9 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               tiles[tilekey]=new Tile(x,y,tilewidth,tilewidth);
               tiles[tilekey].fetch(ctx, graph);
               tilequeue.insert( tiles[tilekey], tilekey, 0 );
+
               ntiles += 1;
+              document.getElementById("tilecount").innerHTML=ntiles;
             } 
             y += tilewidth;
           }
@@ -692,6 +717,15 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
       $(document).ready( function() {
 
+        $("#routemode").data("mode","route").css("background-color","AFE6AC");
+        $("#infomode").data("mode","info");
+        $(".modebutton").click(function(ev){
+          $(".modebutton").css("background-color","");
+          $(this).css("background-color","AFE6AC");
+          mode = $(this).data("mode");
+          console.log( mode ); 
+        });
+        
 
         function handle(delta, x, y) {
 
@@ -815,23 +849,44 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           clickpoint = [mouseX(ev),mouseY(ev)];
           buttonstate[ev.button]=1;
         }
+
+        function random_color(red,green,blue){
+          return "#"+
+                 (red+Math.floor(Math.random()*(255-red))).toString(16)+
+                 (green+Math.floor(Math.random()*(255-green))).toString(16)+
+                 (blue+Math.floor(Math.random()*(255-blue))).toString(16);
+        }
         
         canvas.onmouseup = function(ev) {
           if( mouseX(ev)==clickpoint[0] && mouseY(ev)==clickpoint[1] ){
-            tree = {};
-            redraw();
-
             var x = mapX(mouseX(ev));
             var y = mapY(mouseY(ev)); 
 
             var tile = tiles[gettilekey(x,y)];
             var startnode = tile.nearestNode( x,y );
-     
-            if(dijkstra !== undefined){
-              dijkstra.stop();
+    
+            if(mode==="route"){ 
+              tree = {};
+              redraw();
+
+              if(dijkstra !== undefined){
+                dijkstra.stop();
+              }
+              dijkstra = new Dijkstra(startnode); 
+              dijkstra.run(0.35);
+            } else if(mode==="info"){
+              $("#edgeinfo").html("");
+              for( var i in graph.adj[startnode] ){
+                var edge = graph.adj[startnode][i][1];
+                console.log( edge_weight(null,edge) );
+                var color = random_color(100,100,100);
+                $("#edgeinfo").append( "<pre style='background-color:"+color+"'>"+JSON.stringify(edge, null, "  ")+
+                  "\nweight:"+edge_weight(null,edge)+
+                  "\nlength:"+linestring_dist(edge.loc)+"</pre>" );
+                ctx.strokeStyle=color;
+                draw_way( ctx, edge, 0.0001 );
+              }
             }
-            dijkstra = new Dijkstra(startnode); 
-            dijkstra.run(0.35);
           }
           buttonstate[ev.button]=0;
         }
@@ -904,6 +959,13 @@ function distVincenty(lon1, lat1, lon2, lat2) {
       <li onclick="ll=12.509308;rr=ll+portwidth;bb=55.658028;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Copenhagen</a></li>
       <li onclick="ll=-97.828548;rr=ll+portwidth;bb=30.20249;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Austin</a></li>
       </ul>
+      <h2>Fancy information</h2>
+      <div id="fancy">
+      queue size:<span id="queuesize"></span><br>
+      tile count:<span id="tilecount"></span><br>
+      mode: <span class="modebutton" id="routemode">[route]</span><span class="modebutton", id="infomode">[info]</span>
+      <div id="edgeinfo"></div>
+      </div>
     <div>
   </body>
 </html>
