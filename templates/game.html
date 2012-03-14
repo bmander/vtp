@@ -139,7 +139,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         // corner penalty
         var corner_penalty=0.0;
         if(prev_edge && prev_edge.keysvals.name!==edge.keysvals.name){
-          corner_penalty=100;
+          corner_penalty=50;
         }
         
         // hill penalty
