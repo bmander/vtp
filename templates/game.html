@@ -723,7 +723,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           $(".modebutton").css("background-color","");
           $(this).css("background-color","AFE6AC");
           mode = $(this).data("mode");
-          console.log( mode ); 
+          //console.log( mode ); 
         });
         
 
@@ -878,7 +878,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               $("#edgeinfo").html("");
               for( var i in graph.adj[startnode] ){
                 var edge = graph.adj[startnode][i][1];
-                console.log( edge_weight(null,edge) );
+                //console.log( edge_weight(null,edge) );
                 var color = random_color(100,100,100);
                 $("#edgeinfo").append( "<pre style='background-color:"+color+"'>"+JSON.stringify(edge, null, "  ")+
                   "\nweight:"+edge_weight(null,edge)+
