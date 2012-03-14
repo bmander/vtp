@@ -49,6 +49,8 @@ server.open(function(err, client) {
 });
 
 app.get('/', function(req, res){
+  console.log( req.method, req.url );
+
   res.contentType("html");
   fs.readFile("templates/game.html", function(err,data){
     res.send( data );
