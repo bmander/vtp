@@ -856,6 +856,29 @@ function distVincenty(lon1, lat1, lon2, lat2) {
                  (green+Math.floor(Math.random()*(255-green))).toString(16)+
                  (blue+Math.floor(Math.random()*(255-blue))).toString(16);
         }
+
+        function min(x,y){
+          if(x<y){ return x; } else { return y; }
+        }
+        function max(x,y){
+          if(x>y){ return x; } else { return y; }
+        }
+        function bounds(ary){
+          //returns bounds of 2d string
+          var ll=100000000;
+          var rr=-100000000;
+          var bb=100000000;
+          var tt=-100000000;
+
+          for( var i in ary ){
+            ll = min(ll,ary[i][0]);
+            rr = max(rr,ary[i][0]);
+            bb = min(bb,ary[i][1]);
+            tt = max(tt,ary[i][1]); 
+          }
+
+          return {ll:ll,rr:rr,bb:bb,tt:tt};
+        }
         
         canvas.onmouseup = function(ev) {
           if( mouseX(ev)==clickpoint[0] && mouseY(ev)==clickpoint[1] ){
@@ -875,14 +898,46 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               dijkstra = new Dijkstra(startnode); 
               dijkstra.run(0.35);
             } else if(mode==="info"){
+              var canvasses={};
+              var ctxs={};
+              var reverses={};
+
               $("#edgeinfo").html("");
               for( var i in graph.adj[startnode] ){
                 var edge = graph.adj[startnode][i][1];
-                //console.log( edge_weight(null,edge) );
                 var color = random_color(100,100,100);
                 $("#edgeinfo").append( "<pre style='background-color:"+color+"'>"+JSON.stringify(edge, null, "  ")+
                   "\nweight:"+edge_weight(null,edge)+
                   "\nlength:"+linestring_dist(edge.loc)+"</pre>" );
+                $("#edgeinfo").append( "<canvas id='info"+i+"' style='background-color:#ffffff' width='400' height='200'><canvas>" );
+        
+                canvasses[edge.id] = $("#info"+i)[0];
+                ctxs[edge.id] = canvasses[edge.id].getContext("2d");
+                ctxs[edge.id].strokeStyle="black";
+                ctxs[edge.id].lineWidth=1;
+                reverses[edge.id]=edge.reverse;
+
+                var ondataget = function( data ){
+                  if( data === null ){ return; }
+
+                  var dbounds = bounds( data.profile );
+                  ctxs[data.id].beginPath();
+                  if( reverses[data.id] ){
+                    ctxs[data.id].moveTo(400*((dbounds.rr-data.profile[0][0])/dbounds.rr),200-200*((data.profile[0][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
+                    for(var i=1; i<data.profile.length; i++){
+                      ctxs[data.id].lineTo(400*((dbounds.rr-data.profile[i][0])/dbounds.rr), 200-200*((data.profile[i][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
+                    }
+                  } else {
+                    ctxs[data.id].moveTo(400*(data.profile[0][0]/dbounds.rr),200-200*((data.profile[0][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
+                    for(var i=1; i<data.profile.length; i++){
+                      ctxs[data.id].lineTo(400*(data.profile[i][0]/dbounds.rr), 200-200*((data.profile[i][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
+                    }
+                  }
+                  ctxs[data.id].stroke();
+                }
+
+                $.getJSON("/profile/"+edge.id, ondataget);
+
                 ctx.strokeStyle=color;
                 draw_way( ctx, edge, 0.0001 );
               }
