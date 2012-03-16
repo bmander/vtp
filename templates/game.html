@@ -25,8 +25,10 @@ a:hover {text-decoration: underline; color: red;}
 
       var tilewidth=0.02; // geographical units
       var tiles={};
-      var tilequeue = new Queue();
+      var transtiles={};
+      //var tilequeue = new Queue();
       var ntiles=0;
+      var ntranstiles=0;
       var tilelimit=100;
 
       var unitscale=1000;
@@ -36,7 +38,6 @@ a:hover {text-decoration: underline; color: red;}
       var graph = new Graph();
       var tree;
 
-      var ntiles=0;
       var mode="route";
       var modebuttons=[];
 
@@ -437,6 +438,85 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         }
       }
       
+      function TransitTile(inll,inbb,inww,inhh){
+        this.ll=inll;
+        this.bb=inbb;
+        this.ww=inww;
+        this.hh=inhh;
+        this.rr=inll+inww;
+        this.tt=inbb+inhh;
+
+        this.edges = []
+
+        this.nearestNode = function(x,y){
+          var winnerdist=100000000;
+          var winner=null;
+          for(var i=0; i<this.edges.length; i++){
+            var edge = this.edges[i];
+
+            if(!edge.stop_loc || edge.stop_loc.length==0){
+              continue;
+            }
+            var dist = dist(edge.stop_loc[0],edge.stop_loc[1],x,y);
+            if(dist<winnerdist){
+              winnerdist = dist;
+              winner=edge.stop_id;
+            }
+          }
+          return winner;
+        }
+
+        this.draw = function(ctx){
+          if( this.rr < ll ||
+              this.ll > rr ||
+              this.bb > tt ||
+              this.tt < bb ) {
+            return;
+          }
+
+          for(var i=0; i<this.edges.length; i++){
+            if( this.edges[i].stop_loc === null || this.edges[i].next_stop_loc === null ){
+              continue;
+            }
+
+            draw_linestring( ctx, [this.edges[i].stop_loc, this.edges[i].next_stop_loc] );
+          }
+        }
+
+        this.tilekey = function(){
+          return this.ll.toFixed(2)+":"+this.bb.toFixed(2);
+        }
+
+        this.fetch = function(ctx, graph){
+          var metathis=this;
+
+          $.getJSON("/transtile/"+this.tilekey(), function(data){
+            if( data===null){
+              return;
+            }
+
+            metathis.edges=data.value.edges;
+            
+            ctx.strokeStyle="blue"; 
+            metathis.draw(ctx);
+
+            /*
+            for(var i=0; i<metathis.ways.length; i++){
+              var way = metathis.ways[i];
+              if( way.loc.length<2 ){
+                 continue;
+              }
+              graph.add( way.fromv, way.tov, way );
+              if( way.keysvals.oneway !== "true" && way.keysvals.oneway !== "yes" ){
+                var revway = {reverse:true,loc:way.loc,keysvals:way.keysvals,id:way.id,tov:way.fromv,fromv:way.tov,rise:way.fall,fall:way.rise}
+                graph.add( revway.fromv, revway.tov, revway );
+              }
+            }*/
+          });
+          
+        }
+
+      }
 
       function Tile(inll,inbb,inww,inhh){
         this.ll=inll;
@@ -574,9 +654,14 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         while(x<rr){
           while(y<tt){
             var tilekey = x.toFixed(2)+":"+y.toFixed(2);
+            ctx.strokeStyle="black";
             if( tiles[tilekey]!==undefined ) {
               tiles[tilekey].draw(ctx);
-            } 
+            }
+            ctx.strokeStyle="blue";
+            if( transtiles[tilekey]!==undefined ){
+              transtiles[tilekey].draw(ctx);
+            }
             y += tilewidth;
           }
           y = ystart;
@@ -607,9 +692,12 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               //console.log( "new tile "+tilekey );
               tiles[tilekey]=new Tile(x,y,tilewidth,tilewidth);
               tiles[tilekey].fetch(ctx, graph);
-              tilequeue.insert( tiles[tilekey], tilekey, 0 );
+              //tilequeue.insert( tiles[tilekey], tilekey, 0 );
+              transtiles[tilekey] = new TransitTile(x,y,tilewidth,tilewidth);
+              transtiles[tilekey].fetch(ctx, graph);
 
               ntiles += 1;
+              ntranstiles += 1;
               document.getElementById("tilecount").innerHTML=ntiles;
             } 
             y += tilewidth;
