@@ -457,13 +457,13 @@ function distVincenty(lon1, lat1, lon2, lat2) {
             if(!edge.stop_loc || edge.stop_loc.length==0){
               continue;
             }
-            var dist = dist(edge.stop_loc[0],edge.stop_loc[1],x,y);
-            if(dist<winnerdist){
-              winnerdist = dist;
+            var dists0 = dist(edge.stop_loc[0],edge.stop_loc[1],x,y);
+            if(dists0<winnerdist){
+              winnerdist = dists0;
               winner=edge.stop_id;
             }
           }
-          return winner;
+          return [winner,winnerdist];
         }
 
         this.draw = function(ctx){
@@ -553,7 +553,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               winner=way.tov;
             }
           }
-          return winner;
+          return [winner,winnerdist];
         }
 
         this.draw = function(ctx, drawways){
@@ -967,30 +967,12 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
           return {ll:ll,rr:rr,bb:bb,tt:tt};
         }
-        
-        canvas.onmouseup = function(ev) {
-          if( mouseX(ev)==clickpoint[0] && mouseY(ev)==clickpoint[1] ){
-            var x = mapX(mouseX(ev));
-            var y = mapY(mouseY(ev)); 
 
-            var tile = tiles[gettilekey(x,y)];
-            var startnode = tile.nearestNode( x,y );
-    
-            if(mode==="route"){ 
-              tree = {};
-              redraw();
-
-              if(dijkstra !== undefined){
-                dijkstra.stop();
-              }
-              dijkstra = new Dijkstra(startnode); 
-              dijkstra.run(0.35);
-            } else if(mode==="info"){
+        function outgoing_way_info(startnode){
               var canvasses={};
               var ctxs={};
               var reverses={};
 
-              $("#edgeinfo").html("");
               for( var i in graph.adj[startnode] ){
                 var edge = graph.adj[startnode][i][1];
                 var color = random_color(100,100,100);
@@ -1028,6 +1010,37 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
                 ctx.strokeStyle=color;
                 draw_way( ctx, edge, 0.0001 );
+              }
+        }
+        
+        canvas.onmouseup = function(ev) {
+          if( mouseX(ev)==clickpoint[0] && mouseY(ev)==clickpoint[1] ){
+            var x = mapX(mouseX(ev));
+            var y = mapY(mouseY(ev)); 
+
+            var tile = tiles[gettilekey(x,y)];
+            var startnode_entry = tile.nearestNode( x,y );
+            var startnode = startnode_entry[0];
+
+            var transtile = transtiles[gettilekey(x,y)];
+            var transnode_entry = transtile.nearestNode( x,y );
+            var transstartnode = transnode_entry[0];
+    
+            if(mode==="route"){ 
+              tree = {};
+              redraw();
+
+              if(dijkstra !== undefined){
+                dijkstra.stop();
+              }
+              dijkstra = new Dijkstra(startnode); 
+              dijkstra.run(0.35);
+            } else if(mode==="info"){
+              $("#edgeinfo").html("");
+              if( transnode_entry[1] < startnode_entry[1] ){
+                console.log( transstartnode );
+              } else {
+                outgoing_way_info( startnode );
               }
             }
           }
