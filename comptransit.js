@@ -88,8 +88,6 @@ db.runCommand( {mapreduce:"bart_trips",
                 reduce:reducef,
                 out:"bart_trips_stoptimes"} );
 
-print( "done" );
-print( "starting second" );
 */
 
 /*
@@ -146,8 +144,8 @@ db.runCommand( {mapreduce:"bart_stop_times_loc",
 */
 
 // find every stop_time associated with a particular pattern and stop
-
 /*
+
 function mapf(){
 
   function secs_since_midnight(time){
@@ -160,51 +158,45 @@ function mapf(){
     var stop_ids = stop_times.map( function(x){
       return x.stop_id;
     });
-    var crossings = [];
-    for(var i=0; i<stop_times.length-1; i++){
-      crossings.push( secs_since_midnight(stop_times[i+1].arrival_time)-secs_since_midnight(stop_times[i].departure_time) );
-      if( crossings[crossings.length-1] < 0 ){
-        printjson( stop_times[i] );
-        printjson( stop_times[i+1] );
-        printjson( stop_times[i+1].arrival_time );
-        var arrival=stop_times[i+1].arrival_time;
-        printjson( parseInt(arrival.substring(0,2)) );
-        printjson( parseInt(arrival.substring(3,5)) );
-        printjson( parseInt(arrival.substring(6,8)) );
-        printjson( secs_since_midnight(stop_times[i].departure_time) );
-        printjson( secs_since_midnight(stop_times[i+1].arrival_time) );
-        printjson( secs_since_midnight(stop_times[i+1].arrival_time)-secs_since_midnight(stop_times[i].departure_time) );
-      }
-    }
-    var stands = [];
-    for(var i in stop_times){
-      stands.push( secs_since_midnight(stop_times[i].departure_time)-secs_since_midnight(stop_times[i].arrival_time) );
-    }
-    return stop_ids.join("\n")+"\n"+crossings.join("\n")+"\n"+stands.join("\n");
+    //var crossings = [];
+    //for(var i=0; i<stop_times.length-1; i++){
+    //  crossings.push( secs_since_midnight(stop_times[i+1].arrival_time)-secs_since_midnight(stop_times[i].departure_time) );
+    //}
+    //var stands = [];
+    //for(var i in stop_times){
+    //  stands.push( secs_since_midnight(stop_times[i].departure_time)-secs_since_midnight(stop_times[i].arrival_time) );
+    //}
+    //return stop_ids.join("\n")+"\n"+crossings.join("\n")+"\n"+stands.join("\n");
+    return stop_ids.join("|");
   }
 
   var pattern_key = get_pattern_key( this.value.stop_times );
 
-  for( var i in this.value.stop_times ) {
+  // tag each stop_time with depart and arrive secs_since_midnight
+  for( var i=0; i<this.value.stop_times.length-1; i++ ) {
     var stop_time = this.value.stop_times[i];
+    var next_stop_time = this.value.stop_times[i+1];
     stop_time.arrival_time_secs = secs_since_midnight( stop_time.arrival_time );
     stop_time.departure_time_secs = secs_since_midnight( stop_time.departure_time );
+    stop_time.crossing_time = secs_since_midnight( next_stop_time.arrival_time ) - secs_since_midnight( stop_time.departure_time );
   }
 
+  
   for( var i=0; i<this.value.stop_times.length; i++) {
     var stop_time = this.value.stop_times[i];
-    stop_time.service_id=this.value.service_id;
-    var crossing_time=null;
     var next_stop_id=null;
     if(i<this.value.stop_times.length-1){
-      crossing_time = this.value.stop_times[i+1].arrival_time_secs-this.value.stop_times[i].departure_time_secs;
       next_stop_id = this.value.stop_times[i+1].stop_id;
       next_stop_loc = this.value.stop_times[i+1].loc;
     }
-    var dwell_time=stop_time.departure_time_secs-stop_time.arrival_time_secs;
     var stub_stop_times={};
-    stub_stop_times[stop_time.service_id]=[stop_time];
-    emit( pattern_key+"-"+stop_time.stop_id, {stop_id:stop_time.stop_id,stop_loc:stop_time.loc,next_stop_id:next_stop_id,next_stop_loc:next_stop_loc,crossing_time:crossing_time,dwell_time:dwell_time,stop_times:stub_stop_times} );
+    stub_stop_times[this.value.service_id]=[stop_time];
+    emit( pattern_key+"-"+stop_time.stop_id, {stop_id:stop_time.stop_id,
+      stop_loc:stop_time.loc,
+      next_stop_id:next_stop_id,
+      next_stop_loc:next_stop_loc,
+      pattern_key:pattern_key,
+      stop_times:stub_stop_times} );
   }
 }
 
@@ -212,9 +204,10 @@ function reducef(key,values){
   function insert_in_order( ary, item, key ){
     var i;
     for(i=0; i<ary.length; i++){
+      //print( key(item)+" "+key(ary[i]) );
       if( key(item)<key(ary[i]) ) {
         ary.splice(i,0,item);
-        break;
+        return;
       }
     }
     if(i==ary.length){
@@ -223,22 +216,30 @@ function reducef(key,values){
   }
 
   function merge_lists( ary, items, key ){
+
     for( var i in items ){
       insert_in_order( ary, items[i], key );
     }
+
   }
 
-  ret = {};
+  schedules = {};
   for( var i in values ){
     for( service_id in values[i].stop_times ) {
-      if( ret[service_id] === undefined ){
-        ret[service_id]=values[i].stop_times[service_id];
-      } else {
-        merge_lists( ret[service_id], values[i].stop_times[service_id], function(x){x.departure_time_secs} );
+      if( schedules[service_id] === undefined ){
+        schedules[service_id]=[];
       }
+
+      merge_lists( schedules[service_id], values[i].stop_times[service_id], function(x){ return x.departure_time_secs} );
     }
   }
-  return {stop_id:values[i].stop_id,stop_loc:values[i].stop_loc,next_stop_id:values[i].next_stop_id,next_stop_loc:values[i].next_stop_loc,crossing_time:values[i].crossing_time,dwell_time:values[i].dwell_time,stop_times:ret};
+
+  return {stop_id:values[i].stop_id,
+    stop_loc:values[i].stop_loc,
+    next_stop_id:values[i].next_stop_id,
+    next_stop_loc:values[i].next_stop_loc,
+    pattern_key:values[i].pattern_key,
+    stop_times:schedules};
 }
 
 db.runCommand( {mapreduce:"bart_trips_stoptimes",
@@ -247,17 +248,16 @@ db.runCommand( {mapreduce:"bart_trips_stoptimes",
                 out:"bart_stop_time_bundles"} );
 */
 
-/*
 
 // collect and boil down edge information
-
+/*
 function mapf(){
   var scheds={};
   for( var service_id in this.value.stop_times ) {
     var simple_departures = this.value.stop_times[service_id].map( function(stoptime){
-      return {trip_id:stoptime.trip_id, depart:stoptime.departure_time_secs};
+      return {trip_id:stoptime.trip_id, crossing_time:stoptime.crossing_time, depart:stoptime.departure_time_secs};
     });
-    scheds[service_id] = [{crossing_time:this.value.crossing_time,
+    scheds[service_id] = [{pattern_key:this.value.pattern_key,
                            departures:simple_departures}];
   }
   
@@ -292,9 +292,9 @@ db.runCommand( {mapreduce:"bart_stop_time_bundles",
                 map:mapf,
                 reduce:reducef,
                 out:"bart_edges"} );
-
-
 */
+
+
 
 function mapf(){
   var gettilespec = function(loc,res){
@@ -319,3 +319,6 @@ db.runCommand( {mapreduce:"bart_edges",
                 map:mapf,
                 reduce:reducef,
                 out:"bart_tiles"} );
+
+
+
