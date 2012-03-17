@@ -88,6 +88,18 @@ function distVincenty(lon1, lat1, lon2, lat2) {
   var revAz = Math.atan2(cosU1*sinLambda, -sinU1*cosU2+cosU1*sinU2*cosLambda);
   return { distance: s, initialBearing: fwdAz.toDeg(), finalBearing: revAz.toDeg() };
 }
+
+      function gettilekey(x,y){
+        var xstart = (Math.round(Math.floor(x/tilewidth)*tilewidth*1000)/1000);
+        var ystart = (Math.round(Math.floor(y/tilewidth)*tilewidth*1000)/1000);
+
+        return xstart.toFixed(2)+":"+ystart.toFixed(2);
+      }
+
+      function get_nearest_street_vertex(lng,lat){
+        tile = tiles[gettilekey(lng,lat)];
+        return tile.nearestNode( lng,lat );
+      }
   
       function clear(){
         ctx.clearRect(ll,bb,(rr-ll),(tt-bb));
@@ -500,18 +512,21 @@ function distVincenty(lon1, lat1, lon2, lat2) {
             ctx.strokeStyle="blue"; 
             metathis.draw(ctx);
 
-            /*
-            for(var i=0; i<metathis.ways.length; i++){
-              var way = metathis.ways[i];
-              if( way.loc.length<2 ){
+            for(var i=0; i<metathis.edges.length; i++){
+              var edge = metathis.edges[i];
+              if( edge.stop_id===null || edge.next_stop_id===null ){
                  continue;
               }
-              graph.add( way.fromv, way.tov, way );
-              if( way.keysvals.oneway !== "true" && way.keysvals.oneway !== "yes" ){
-                var revway = {reverse:true,loc:way.loc,keysvals:way.keysvals,id:way.id,tov:way.fromv,fromv:way.tov,rise:way.fall,fall:way.rise}
-                graph.add( revway.fromv, revway.tov, revway );
-              }
-            }*/
+
+              // get nearest street vertex
+              var from_street_v = get_nearest_street_vertex( edge.stop_loc[0], edge.stop_loc[1] );
+              graph.add( from_street_v[0], "bart-"+edge.stop_id, {type:"link"} );
+
+              var to_steet_v = get_nearest_street_vertex( edge.next_stop_loc[0], edge.next_stop_loc[1] );
+              graph.add( "bart-"+edge.next_stop_id, to_street_v[0], {type:"link"} );
+
+              graph.add( "bart-"+edge.stop_id, "bart-"+edge.next_stop_id, edge );
+            }
           });
           
         }
@@ -581,7 +596,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           return this.ll.toFixed(2)+":"+this.bb.toFixed(2);
         }
 
-        this.fetch = function(ctx, graph){
+        this.fetch = function(ctx, graph, ontilefetched){
           var metathis=this;
 
           $.getJSON("/comptile/"+this.tilekey(), function(data){
@@ -611,6 +626,8 @@ function distVincenty(lon1, lat1, lon2, lat2) {
                 graph.add( revway.fromv, revway.tov, revway );
               }
             }
+
+            ontilefetched();
           });
           
         }
@@ -682,6 +699,17 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         var x = xstart;
         var y = ystart;
 
+        var tilesstarted=0;
+        var tilesfinished=0;
+        var ontilefetched = function(){
+          tilesfinished += 1; 
+          console.log( tilesfinished, tilesstarted );
+
+          if( tilesfinished == tilesstarted ){
+            console.log( "finished" );
+          }
+        }
+
         var newtiles=false;
         while(x<rr){
           while(y<tt){
@@ -691,12 +719,13 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
               //console.log( "new tile "+tilekey );
               tiles[tilekey]=new Tile(x,y,tilewidth,tilewidth);
-              tiles[tilekey].fetch(ctx, graph);
+              tiles[tilekey].fetch(ctx, graph, ontilefetched);
               //tilequeue.insert( tiles[tilekey], tilekey, 0 );
               transtiles[tilekey] = new TransitTile(x,y,tilewidth,tilewidth);
               transtiles[tilekey].fetch(ctx, graph);
 
               ntiles += 1;
+              tilesstarted += 1;
               ntranstiles += 1;
               document.getElementById("tilecount").innerHTML=ntiles;
             } 
@@ -890,13 +919,6 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           
         }
 
-        function gettilekey(x,y){
-          var xstart = (Math.round(Math.floor(x/tilewidth)*tilewidth*1000)/1000);
-          var ystart = (Math.round(Math.floor(y/tilewidth)*tilewidth*1000)/1000);
-
-          return xstart.toFixed(2)+":"+ystart.toFixed(2);
-        }
-
         function mouseX(ev) {
           var posx = 0;
           if (ev.pageX) {
@@ -1012,14 +1034,25 @@ function distVincenty(lon1, lat1, lon2, lat2) {
                 draw_way( ctx, edge, 0.0001 );
               }
         }
+
+        function outgoing_transitedge_info(startnode){
+              for( var i in graph.adj[startnode] ){
+                var edge = graph.adj[startnode][i][1];
+                var color = random_color(100,100,100);
+                $("#edgeinfo").append( "<pre style='background-color:"+color+"'>"+JSON.stringify(edge, null, "  ")+"</pre>" );
+
+                ctx.strokeStyle=color;
+                ctx.lineWidth=0.1;
+                draw_linestring( ctx, [edge.stop_loc, edge.next_stop_loc] );
+              }
+        }
         
         canvas.onmouseup = function(ev) {
           if( mouseX(ev)==clickpoint[0] && mouseY(ev)==clickpoint[1] ){
             var x = mapX(mouseX(ev));
             var y = mapY(mouseY(ev)); 
-
-            var tile = tiles[gettilekey(x,y)];
-            var startnode_entry = tile.nearestNode( x,y );
+          
+            var startnode_entry = get_nearest_street_vertex( x, y );
             var startnode = startnode_entry[0];
 
             var transtile = transtiles[gettilekey(x,y)];
@@ -1039,6 +1072,8 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               $("#edgeinfo").html("");
               if( transnode_entry[1] < startnode_entry[1] ){
                 console.log( transstartnode );
+                console.log( graph.adj["bart-"+transstartnode] );
+                outgoing_transitedge_info( "bart-"+transstartnode ); 
               } else {
                 outgoing_way_info( startnode );
               }
