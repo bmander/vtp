@@ -249,6 +249,7 @@ db.runCommand( {mapreduce:"bart_trips_stoptimes",
 */
 
 // collect and boil down edge information
+
 /*
 function mapf(){
   var scheds={};
@@ -264,8 +265,6 @@ function mapf(){
                                                           stop_loc:this.value.stop_loc,
                                                           next_stop_id:this.value.next_stop_id,
                                                           next_stop_loc:this.value.next_stop_loc,
-                                                          link_node_id:null,
-                                                          link_node_loc:null,
                                                           schedules:scheds} );
   
 }
@@ -283,14 +282,10 @@ function reducef(key, values){
     }
   }
 
-  var link_node = db.city_nodes_joined.find({"value.count":{$gt:1}, "value.loc":{$near:values[0].stop_loc}}).limit(1).toArray()[0];
-
   return {stop_id:values[0].stop_id,
           stop_loc:values[0].stop_loc,
           next_stop_id:values[0].next_stop_id,
           next_stop_loc:values[0].next_stop_loc,
-          link_node_id:link_node.value.id,
-          link_node_loc:link_node.value.loc,
           schedules:combined_scheds};
 }
 
@@ -301,7 +296,7 @@ db.runCommand( {mapreduce:"bart_stop_time_bundles",
 */
 
 
-
+/*
 function mapf(){
   var gettilespec = function(loc,res){
     var x = Math.round(Math.floor(loc[0]/res)*res*1000)/1000;
@@ -310,7 +305,7 @@ function mapf(){
     return x.toFixed(2)+":"+y.toFixed(2);
   }
 
-  emit( gettilespec( this.value.stop_loc, 0.02), {'edges':[this.value]} )
+  emit( gettilespec( this.value.stop_loc, 0.02), {'links':null,'edges':[this.value]} )
 }
 
 function reducef(key,values){
@@ -318,13 +313,44 @@ function reducef(key,values){
   for( var i=0; i<values.length; i++ ){
     edges = edges.concat( values[i].edges );
   }
-  return {'edges':edges};
+  return {'links':null,'edges':edges};
 }
 
 db.runCommand( {mapreduce:"bart_edges",
                 map:mapf,
                 reduce:reducef,
                 out:"bart_tiles"} );
+*/
 
 
+function mapf(){
+  function values(obj){
+    ret = [];
+    for(key in obj){
+      ret.push( obj[key] );
+    }
+    return ret;
+  }
 
+  links = {};
+  for(var i=0; i<this.value.edges.length; i++){
+    var edge = this.value.edges[i];
+    if( links[edge.stop_id] === undefined ){
+      link_node = db.city_nodes_joined.find({"value.count":{$gt:1}, "value.loc":{$near:edge.stop_loc}}).limit(1).toArray()[0];
+      links[edge.stop_id]={stop_id:edge.stop_id,
+                           stop_loc:edge.stop_loc,
+                           link_id:link_node.value.id,
+                           link_loc:link_node.value.loc};
+    }
+  }
+  emit( this._id, {'links':values(links), 'edges':this.value.edges} )
+}
+
+function reducef( key, vals ){
+  return vals[0];
+}
+
+db.runCommand( {mapreduce:"bart_tiles",
+                map: mapf,
+                reduce: reducef,
+                out: {'replace':'bart_tiles'}} );
