@@ -248,7 +248,6 @@ db.runCommand( {mapreduce:"bart_trips_stoptimes",
                 out:"bart_stop_time_bundles"} );
 */
 
-
 // collect and boil down edge information
 /*
 function mapf(){
@@ -260,16 +259,19 @@ function mapf(){
     scheds[service_id] = [{pattern_key:this.value.pattern_key,
                            departures:simple_departures}];
   }
-  
+
   emit( this.value.stop_id+"\n"+this.value.next_stop_id, {stop_id:this.value.stop_id,
                                                           stop_loc:this.value.stop_loc,
                                                           next_stop_id:this.value.next_stop_id,
                                                           next_stop_loc:this.value.next_stop_loc,
+                                                          link_node_id:null,
+                                                          link_node_loc:null,
                                                           schedules:scheds} );
   
 }
 
 function reducef(key, values){
+
   var combined_scheds={};
   for( var i=0; i<values.length; i++) {
     for(var service_id in values[i].schedules){
@@ -281,10 +283,14 @@ function reducef(key, values){
     }
   }
 
+  var link_node = db.city_nodes_joined.find({"value.count":{$gt:1}, "value.loc":{$near:values[0].stop_loc}}).limit(1).toArray()[0];
+
   return {stop_id:values[0].stop_id,
           stop_loc:values[0].stop_loc,
           next_stop_id:values[0].next_stop_id,
           next_stop_loc:values[0].next_stop_loc,
+          link_node_id:link_node.value.id,
+          link_node_loc:link_node.value.loc,
           schedules:combined_scheds};
 }
 
