@@ -3,6 +3,7 @@
  */
 
 /*
+
 function mapf(){
   if( this.keysvals.highway !== undefined ){
     for(var i=0; i<this.refs.length; i++){
@@ -26,10 +27,10 @@ function reducef(key, values){
   return {id:key,loc:null, count:n, ways:ways};
 }
 
-db.runCommand( { mapreduce: "cop_osm_ways",
+db.runCommand( { mapreduce: "city_osm_ways",
                  map:mapf,
                  reduce:reducef,
-                 out:"cop_nodes_count"
+                 out:"city_nodes_count"
                });
 */
 
@@ -43,14 +44,13 @@ function reducef(key, values){
 }
 
 
-db.runCommand( { mapreduce: "cop_osm_nodes",
+db.runCommand( { mapreduce: "city_osm_nodes",
                  map: mapf,
                  reduce: reducef,
-                 out: {merge:"cop_nodes_count"} } )
+                 out: {merge:"city_nodes_count"} } )
 */
 
 
-/*
 //merge loc and counts into one doc
 function mapf(){
   emit(this.value.id,this.value);
@@ -68,12 +68,11 @@ function reducef(key,values){
   return ret;
 }
 
-db.runCommand( {mapreduce: "cop_nodes_count",
+db.runCommand( {mapreduce: "city_nodes_count",
                 map: mapf,
                 reduce: reducef,
-                out: "cop_nodes_joined"} );
+                out: "city_nodes_joined"} );
 
-*/
 
 /*
 
@@ -112,10 +111,10 @@ function reducef(key,values){
   return {nodes:nodes,keysvals:values[0].keysvals}
 }
 
-db.runCommand( {mapreduce:"cop_nodes_joined",
+db.runCommand( {mapreduce:"city_nodes_joined",
                 map:mapf,
                 reduce:reducef,
-                out:"cop_presliced_ways"} );
+                out:"city_presliced_ways"} );
 */
 
 /*
@@ -158,10 +157,10 @@ function reducef(key,values){
   return values[0];
 }
 
-db.runCommand( {mapreduce:"cop_presliced_ways",
+db.runCommand( {mapreduce:"city_presliced_ways",
                 map:mapf,
                 reduce:reducef,
-                out:"cop_sliced_ways"} );
+                out:"city_sliced_ways"} );
 */
 
 /*
@@ -207,13 +206,13 @@ function reducef(key,values){
   return {ways:ret};
 }
 
-db.runCommand({mapreduce:"cop_sliced_ways",
+db.runCommand({mapreduce:"city_sliced_ways",
                map:mapf,
                reduce:reducef,
-               out:"cop_tiled_ways"})
+               out:"city_tiled_ways"})
 */
 
-
+/*
 
 //chunk split ways into tiles
 function mapf(){
@@ -320,9 +319,9 @@ function reducef(key,values){
   return {ways:ret,wayinfo:wayinfo};
 }
 
-db.runCommand({mapreduce:"cop_sliced_ways",
+db.runCommand({mapreduce:"city_sliced_ways",
                map:mapf,
                reduce:reducef,
                out:{"merge":"simple_tiles"}})
-
+*/
 
