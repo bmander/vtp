@@ -1,7 +1,7 @@
 var pbf = require("./pbf.js");
 var mongodb = require('mongodb');
 
-var path="/storage/maps/austin.osm.pbf";
+var path="/storage/maps/san-francisco.osm.pbf";
 var fileblockfile = new pbf.FileBlockFile(path);
 var pbffile = new pbf.PBFFile(fileblockfile);
 
@@ -19,7 +19,7 @@ function clean_keysvals(keysvals){
 // open connection to mongo server
 var server = new mongodb.Db('test', new mongodb.Server("127.0.0.1", 27017, {}))
 server.open(function(err, client) {
-  var collection = new mongodb.Collection(client,"cop_osm_ways");
+  var collection = new mongodb.Collection(client,"city_osm_ways");
 
   // collect a list of ways from the pbffile
   var i=0;
