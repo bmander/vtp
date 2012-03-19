@@ -22,6 +22,7 @@ server.open(function(err, client) {
   var collection = new mongodb.Collection(client,"tiled_ways");
   var compcoll = new mongodb.Collection(client,"simple_tiles");
   var profilecoll = new mongodb.Collection(client,"profiles");
+  var transcoll = new mongodb.Collection(client,"bart_tiles");
 
   app.get('/tile/*', function(req,res) {
     res.contentType("json");
@@ -35,6 +36,14 @@ server.open(function(err, client) {
     res.contentType("json");
     var cursor = compcoll.find({_id:req.params[0]}).limit(1);
     cursor.nextObject( function(err,doc) {
+      res.send( doc );
+    });
+  });
+
+  app.get('/transtile/*', function(req,res) {
+    res.contentType("json");
+    var cursor = transcoll.find({_id:req.params[0]}).limit(1);
+    cursor.nextObject( function(err,doc){
       res.send( doc );
     });
   });
