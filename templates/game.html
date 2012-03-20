@@ -122,7 +122,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         return ret;
       }
 
-      function edge_weight(prev_edge, edge) {
+      function street_weight(prev_edge, edge){
         // don't go against traffic if it's not allowed for bikes
         if( edge.keysvals["oneway:bicycle"]==="yes" && edge.reverse ){
           return null;
@@ -151,7 +151,9 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
         // corner penalty
         var corner_penalty=0.0;
-        if(prev_edge && prev_edge.keysvals.name!==edge.keysvals.name){
+        if(prev_edge && 
+           prev_edge.keysvals &&
+           prev_edge.keysvals.name!==edge.keysvals.name){
           corner_penalty=50;
         }
         
@@ -164,6 +166,16 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         } 
 
         return mult*ret + corner_penalty + hill_penalty;
+      }
+
+      function edge_weight(prev_edge, edge) {
+        if( edge.type==="street"){
+          return street_weight( prev_edge, edge );
+        } else if( edge.type==="link" ) {
+          return 0;
+        } else {
+          return 50;
+        }
       }
 
       function draw_linestring(ctx, ary){
@@ -337,17 +349,21 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
           if( branch['way'] ){
 
-            if(branch.way.keysvals.highway==="footway" || branch.way.keysvals.highway==="path") {
-              ctx.strokeStyle="007007";
-            } else if (branch.way.keysvals.bicycle==="designated" || branch.way.keysvals.cycleway==="lane") {
-              ctx.strokeStyle="910088"; 
-            } else if (branch.way.keysvals.highway==="cycleway") {
-              ctx.strokeStyle="000BA8";
-            } else {
-              ctx.strokeStyle="D40000";
+            ctx.strokeStyle="D40000";
+            if( branch.way.keysvals !== undefined ){
+              if(branch.way.keysvals.highway==="footway" || branch.way.keysvals.highway==="path") {
+                ctx.strokeStyle="007007";
+              } else if (branch.way.keysvals.bicycle==="designated" || branch.way.keysvals.cycleway==="lane") {
+                ctx.strokeStyle="910088"; 
+              } else if (branch.way.keysvals.highway==="cycleway") {
+                ctx.strokeStyle="000BA8";
+              }
             }
             
             if(branch['trunkyness']==0){
+              if( branch.way.loc === undefined ){
+                console.log( branch.way );
+              }
               var segs = interpolate( branch.way.loc, 0.0001);
               if( segs === null ){
                 return;
@@ -465,7 +481,8 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         this.rr=inll+inww;
         this.tt=inbb+inhh;
 
-        this.edges = []
+        this.edges = [];
+        this.links = [];
 
         this.nearestNode = function(x,y){
           var winnerdist=100000000;
@@ -502,6 +519,10 @@ function distVincenty(lon1, lat1, lon2, lat2) {
             draw_dot( ctx, this.edges[i].stop_loc[0], this.edges[i].stop_loc[1], 0.1, "blue" );
             draw_dot( ctx, this.edges[i].next_stop_loc[0], this.edges[i].next_stop_loc[1], 0.1, "blue" );
           }
+
+          for(var i=0; i<this.links.length; i++){
+            draw_linestring( ctx, [this.links[i].stop_loc, this.links[i].link_loc] );
+          }
         }
 
         this.tilekey = function(){
@@ -517,6 +538,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
             }
 
             metathis.edges=data.value.edges;
+            metathis.links=data.value.links;
             
             ctx.strokeStyle="blue"; 
             metathis.draw(ctx);
@@ -526,15 +548,17 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               if( edge.stop_id===null || edge.next_stop_id===null ){
                  continue;
               }
-
-              // get nearest street vertex
-              //var from_street_v = get_nearest_street_vertex( edge.stop_loc[0], edge.stop_loc[1] );
-              //graph.add( from_street_v[0], "bart-"+edge.stop_id, {type:"link"} );
-
-              //var to_steet_v = get_nearest_street_vertex( edge.next_stop_loc[0], edge.next_stop_loc[1] );
-              //graph.add( "bart-"+edge.next_stop_id, to_street_v[0], {type:"link"} );
-
+              edge.type="transit";
+              edge.loc=[edge.stop_loc, edge.next_stop_loc];
               graph.add( "bart-"+edge.stop_id, "bart-"+edge.next_stop_id, edge );
+            }
+
+            for(var i=0; i<metathis.links.length; i++){
+              var link = metathis.links[i];
+              link.type='link';
+              link.loc=[link.stop_loc,link.link_loc];
+              graph.add( "bart-"+link.stop_id, link.link_id, link );
+              graph.add( link.link_id, "bart-"+link.stop_id, link );
             }
           });
           
@@ -630,9 +654,10 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               if( way.loc.length<2 ){
                  continue;
               }
+              way.type="street";
               graph.add( way.fromv, way.tov, way );
               if( way.keysvals.oneway !== "true" && way.keysvals.oneway !== "yes" ){
-                var revway = {reverse:true,loc:way.loc,keysvals:way.keysvals,id:way.id,tov:way.fromv,fromv:way.tov,rise:way.fall,fall:way.rise}
+                var revway = {type:"street",reverse:true,loc:way.loc,keysvals:way.keysvals,id:way.id,tov:way.fromv,fromv:way.tov,rise:way.fall,fall:way.rise}
                 graph.add( revway.fromv, revway.tov, revway );
               }
             }
@@ -1022,55 +1047,58 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               for( var i in graph.adj[startnode] ){
                 var edge = graph.adj[startnode][i][1];
                 var color = random_color(100,100,100);
-                $("#edgeinfo").append( "<pre style='background-color:"+color+"'>"+JSON.stringify(edge, null, "  ")+
-                  "\nweight:"+edge_weight(null,edge)+
-                  "\nlength:"+linestring_dist(edge.loc)+"</pre>" );
-                $("#edgeinfo").append( "<canvas id='info"+i+"' style='background-color:#ffffff' width='400' height='200'><canvas>" );
+                if( edge.type==="street" ){
+
+                  $("#edgeinfo").append( "<pre style='background-color:"+color+"'>"+JSON.stringify(edge, null, "  ")+
+                    "\nweight:"+edge_weight(null,edge)+
+                    "\nlength:"+linestring_dist(edge.loc)+"</pre>" );
+                  $("#edgeinfo").append( "<canvas id='info"+i+"' style='background-color:#ffffff' width='400' height='200'><canvas>" );
         
-                canvasses[edge.id] = $("#info"+i)[0];
-                ctxs[edge.id] = canvasses[edge.id].getContext("2d");
-                ctxs[edge.id].strokeStyle="black";
-                ctxs[edge.id].lineWidth=1;
-                reverses[edge.id]=edge.reverse;
+                  canvasses[edge.id] = $("#info"+i)[0];
+                  ctxs[edge.id] = canvasses[edge.id].getContext("2d");
+                  ctxs[edge.id].strokeStyle="black";
+                  ctxs[edge.id].lineWidth=1;
+                  reverses[edge.id]=edge.reverse;
 
-                var ondataget = function( data ){
-                  if( data === null ){ return; }
+                  var ondataget = function( data ){
+                    if( data === null ){ return; }
 
-                  var dbounds = bounds( data.profile );
-                  ctxs[data.id].beginPath();
-                  if( reverses[data.id] ){
-                    ctxs[data.id].moveTo(400*((dbounds.rr-data.profile[0][0])/dbounds.rr),200-200*((data.profile[0][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
-                    for(var i=1; i<data.profile.length; i++){
-                      ctxs[data.id].lineTo(400*((dbounds.rr-data.profile[i][0])/dbounds.rr), 200-200*((data.profile[i][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
+                    var dbounds = bounds( data.profile );
+                    ctxs[data.id].beginPath();
+                    if( reverses[data.id] ){
+                      ctxs[data.id].moveTo(400*((dbounds.rr-data.profile[0][0])/dbounds.rr),200-200*((data.profile[0][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
+                      for(var i=1; i<data.profile.length; i++){
+                        ctxs[data.id].lineTo(400*((dbounds.rr-data.profile[i][0])/dbounds.rr), 200-200*((data.profile[i][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
+                      }
+                    } else {
+                      ctxs[data.id].moveTo(400*(data.profile[0][0]/dbounds.rr),200-200*((data.profile[0][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
+                      for(var i=1; i<data.profile.length; i++){
+                        ctxs[data.id].lineTo(400*(data.profile[i][0]/dbounds.rr), 200-200*((data.profile[i][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
+                      }
                     }
-                  } else {
-                    ctxs[data.id].moveTo(400*(data.profile[0][0]/dbounds.rr),200-200*((data.profile[0][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
-                    for(var i=1; i<data.profile.length; i++){
-                      ctxs[data.id].lineTo(400*(data.profile[i][0]/dbounds.rr), 200-200*((data.profile[i][1]-dbounds.bb)/(dbounds.tt-dbounds.bb)));
-                    }
+                    ctxs[data.id].stroke();
                   }
-                  ctxs[data.id].stroke();
+
+                  $.getJSON("/profile/"+edge.id, ondataget);
+
+                  ctx.strokeStyle=color;
+                  draw_way( ctx, edge, 0.0001 );
+                } else if( edge.type==="link" ){
+                  $("#edgeinfo").append( "<pre style='background-color:"+color+"'>"+JSON.stringify(edge, null, "  ")+"</pre>" );
+
+                  ctx.strokeStyle=color;
+                  ctx.lineWidth=0.1;
+                  draw_linestring( ctx, [edge.stop_loc, edge.link_loc] );
+                } else if( edge.type==="transit") {
+                  $("#edgeinfo").append( "<pre style='background-color:"+color+"'>"+JSON.stringify(edge, null, "  ")+"</pre>" );
+
+                  ctx.strokeStyle=color;
+                  ctx.lineWidth=0.1;
+                  draw_linestring( ctx, [edge.stop_loc, edge.next_stop_loc] );
                 }
-
-                $.getJSON("/profile/"+edge.id, ondataget);
-
-                ctx.strokeStyle=color;
-                draw_way( ctx, edge, 0.0001 );
               }
         }
 
-        function outgoing_transitedge_info(startnode){
-              for( var i in graph.adj[startnode] ){
-                var edge = graph.adj[startnode][i][1];
-                var color = random_color(100,100,100);
-                $("#edgeinfo").append( "<pre style='background-color:"+color+"'>"+JSON.stringify(edge, null, "  ")+"</pre>" );
-
-                ctx.strokeStyle=color;
-                ctx.lineWidth=0.1;
-                draw_linestring( ctx, [edge.stop_loc, edge.next_stop_loc] );
-              }
-        }
-        
         canvas.onmouseup = function(ev) {
           if( mouseX(ev)==clickpoint[0] && mouseY(ev)==clickpoint[1] ){
             var x = mapX(mouseX(ev));
@@ -1097,7 +1125,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               if( transnode_entry[1] < startnode_entry[1] ){
                 console.log( transstartnode );
                 console.log( graph.adj["bart-"+transstartnode] );
-                outgoing_transitedge_info( "bart-"+transstartnode ); 
+                outgoing_way_info( "bart-"+transstartnode ); 
               } else {
                 outgoing_way_info( startnode );
               }
