@@ -715,6 +715,16 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         return ret;
       }
 
+      function showLocation(lat, lon) {
+        ll=lon - (portwidth / 2.0);
+        rr=ll+portwidth;
+        bb=lat - (portheight / 2.0);
+        tt=bb+portheight;
+        apply_transform();
+        fetchTiles();
+        redraw();
+      }
+
       $(document).ready( function() {
 
         $("#routemode").data("mode","route").css("background-color","AFE6AC");
@@ -781,6 +791,18 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           if (event.preventDefault)
             event.preventDefault();
           event.returnValue = false;
+        }
+
+        function setPosition(position) {
+          showLocation(position.coords.latitude, position.coords.longitude);
+        }
+
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(setPosition, function() {
+            console.log("geolocation error");
+          });
+        } else {
+          error('not supported');
         }
 
         canvas = $("#canvas")[0]
@@ -1006,13 +1028,14 @@ function distVincenty(lon1, lat1, lon2, lat2) {
       <p>This thing is a memory hog. Panning in particular will seriously crash your browser after a few minutes. I'll see what I can do.</p>
       <h2>Some places to go</h2>
       <ul> 
-      <li onclick="ll=-71.173370;rr=ll+portwidth;bb=42.289865;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Boston</a></li>
-      <li onclick="ll=-122.41940;rr=ll+portwidth;bb=47.56367;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Seattle</a></li>
-      <li onclick="ll=-122.747846;rr=ll+portwidth;bb=45.456993;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Portland</a></li>
-      <li onclick="ll=-122.521305;rr=ll+portwidth;bb=37.704195;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">San Francisco</a></li>
-      <li onclick="ll=-74.046478;rr=ll+portwidth;bb=40.720721;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">New York City</a></li>
-      <li onclick="ll=12.509308;rr=ll+portwidth;bb=55.658028;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Copenhagen</a></li>
-      <li onclick="ll=-97.828548;rr=ll+portwidth;bb=30.20249;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Austin</a></li>
+
+      <li><a onclick="showLocation(42.3420685, -71.094073); return false;" href="">Boston</a></li>
+      <li><a onclick="showLocation(47.6158735, -122.3401); return false;" href="">Seattle</a></li>
+      <li><a onclick="showLocation(45.5091965, -122.668546); return false;" href="">Portland</a></li>
+      <li><a onclick="showLocation(37.7563985, -122.442005); return false;" href="">San Francisco</a></li>
+      <li><a onclick="showLocation(40.7729245, -73.967178); return false;" href="">New York City</a></li>
+      <li><a onclick="showLocation(55.7102315, 12.430008); return false;" href="">Copenhagen</a></li>
+      <li><a onclick="showLocation(30.2546935, -97.749248); return false;" href="">Austin</a></li>
       </ul>
       <h2>Fancy information</h2>
       <div id="fancy">
