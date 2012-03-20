@@ -231,7 +231,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
             // insert into queue
             this.queue.insert( {'orig':best_edge_dest, 'dest':cand_dest_node,'way':cand_edge_data, 'edgeweight':cand_edge_weight}, cand_dest_node, best_edge_weight+cand_edge_weight );
-            document.getElementById("queuesize").innerHTML=this.queue.size;
+            document.getElementById("queuesize").innerHTML=this.queue.size();
           }
         }
 
@@ -373,59 +373,130 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
       }
 
-      function Queue(){
-        this.data = {};
-        this.size=0;
+      // Binary MinHeap
+      function PriQueue() {
+        this.data = [];
         
-        this.insert = function(item,label,prio){
-          this.size += 1;
-
-          if( this.data[label] !== undefined ) {
-            if(this.data[label][1]>prio){
-              this.data[label] = [item,prio];
-            }
-          } else {
-            this.data[label] = [item,prio];
-          }
-        } 
-
-        this.min = function() {
-          var min=null;
-          var minweight=10000000;
-          for( var item in this.data ){
-            if ( this.data[item][1] < minweight ) {
-              minweight = this.data[item][1];
-              min=item; 
-            }
-          }
-          return min;
+        this.insert = function(item, prio)  {
+          this.data.push([item, prio]);
+          this.bubbleUp(this.data.length - 1);
         }
 
-        this.max = function() {
-          var max=null;
-          var maxweight=-10000000;
-          for( var item in this.data ){
-            if ( this.data[item][1] > maxweight ) {
-              maxweight = this.data[item][1];
-              min=item; 
+        this.getPriority = function(item) {
+          for (var i = 0; i < this.data.length; i++) {
+            if (this.data[i][0] == item) {
+              return this.data[i][1];
             }
           }
-          return min;
+          return null;
+        }
+
+        this.decreasePriority = function(item, prio) {
+          for (var i = 0; i < this.data.length; i++) {
+            if (this.data[i][0] == item) {
+              if(this.data[i][1] < prio) {
+                // you're not decreasing priority.
+                return;
+              }
+              this.data[i][1] = prio;
+              this.bubbleUp(i);
+              return;
+            }
+          }
         }
 
         this.extract_min = function() {
-          this.size -= 1;
-          var minkey = this.min();
-          var ret = this.data[minkey];
-          delete this.data[minkey];
-          return ret;
+          var result = this.data[0];
+          var end = this.data.pop();
+          if (this.data.length > 0) {
+            this.data[0] = end;
+            this.sinkDown(0);
+          }
+          return result;
         }
 
-        this.extract_max = function() {
-          this.size -= 1;
-          var maxkey = this.max();
-          var ret = this.data[maxkey];
-          delete this.data[maxkey];
+        this.size = function() {
+          return this.data.length;
+        }
+
+        this.empty = function() {
+          return 0 === this.data.length;
+        }
+
+        this.bubbleUp = function(offset) {
+          var el = this.data[offset];
+          while(offset > 0) {
+            var parentOffset = Math.floor((offset + 1) / 2) - 1;
+            var parent = this.data[parentOffset];
+            if(el[1] < parent[1]) {
+              this.data[parentOffset] = el;
+              this.data[offset] = parent;
+              offset = parentOffset;
+            }
+            else {
+              break;
+            }
+          }
+        }
+
+        this.sinkDown = function(offset) {
+          var el = this.data[offset];
+          while(true) {
+            // Compute the indices of the child elements.
+            var child2N = (offset + 1) * 2;
+            var child1N = child2N - 1;
+
+            var swap = null;
+
+            // If the first child exists (is inside the array)...
+            if (child1N < this.data.length) {
+              var child1 = this.data[child1N];
+              if (child1[1] < el[1]) {
+                swap = child1N;
+              }
+            }
+            // Do the same checks for the other child.
+            if (child2N < this.data.length) {
+              var child2 = this.data[child2N];
+              if (child2[1] < (swap == null ? el[1] : child1[1])) {
+                swap = child2N;
+              }
+            }
+
+            // If the element needs to be moved, swap it, and continue.
+            if (swap != null) {
+              this.data[offset] = this.data[swap];
+              this.data[swap] = el;
+              offset = swap;
+            }
+            // Otherwise, we are done.
+            else {
+              break;
+            }
+          }
+        }
+      }
+
+      function Queue(){
+        this.data = {};
+        this.priQueue = new PriQueue();
+
+        this.insert = function(item,key,prio){
+          if( this.data[key] !== undefined ) {
+            if(this.data[key][1] > prio) {
+              this.data[key] = [item,prio];
+              this.priQueue.decreasePriority(key, prio);
+            }
+          } else {
+            this.data[key] = [item,prio];
+            this.priQueue.insert(key, prio);
+          }
+        }
+
+        this.extract_min = function() {
+          var minkey = this.priQueue.extract_min()[0];
+          var ret = this.data[minkey];
+          delete this.data[minkey];
           return ret;
         }
 
@@ -434,6 +505,10 @@ function distVincenty(lon1, lat1, lon2, lat2) {
             return false;
           }
           return true;
+        }
+
+        this.size = function() {
+          return this.priQueue.size();
         }
       }
       
