@@ -41,6 +41,10 @@ a:hover {text-decoration: underline; color: red;}
       var mode="route";
       var modebuttons=[];
 
+      var STARTTIME=28800;
+      var SERVICE_ID="WKDY";
+
+
 var rad=function(x){
   return Math.PI*(x/180.0);
 }
@@ -122,60 +126,103 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         return ret;
       }
 
-      function street_weight(prev_edge, edge){
+      function street_weight(prev_edge, state){
+        var SPEED = 5.3; //meters per second
+        var CLIMB_RATE = 10; //seconds per vertical meter
+
         // don't go against traffic if it's not allowed for bikes
-        if( edge.keysvals["oneway:bicycle"]==="yes" && edge.reverse ){
+        if( this.keysvals["oneway:bicycle"]==="yes" && this.reverse ){
           return null;
         }
 
         // ignore freeways
-        if( edge.keysvals.highway === "motorway" || edge.keysvals.highway === "motorway_link"){
+        if( this.keysvals.highway === "motorway" || this.keysvals.highway === "motorway_link"){
           return null;
         }
 
         // various street-type preferences 
         var mult=1;
-        if( edge.keysvals.highway === "footway" || edge.keysvals.highway === "cycleway" ) {
+        if( this.keysvals.highway === "footway" || this.keysvals.highway === "cycleway" ) {
           mult = 1.0//;0.75;
-        } else if( edge.keysvals.highway === "primary" ) {
+        } else if( this.keysvals.highway === "primary" ) {
           mult = 1.0//;1.5;
-        } else if( edge.keysvals.bicycle === "designated" || edge.keysvals.cycleway === "lane" ) {
+        } else if( this.keysvals.bicycle === "designated" || this.keysvals.cycleway === "lane" ) {
           mult = 0.7;
-        } else if( edge.keysvals.highway === "steps" ) {
+        } else if( this.keysvals.highway === "steps" ) {
           mult = 10;
         }
 
         // determine road length
-        var ret = linestring_dist(edge.loc);
-        if(ret===null){ return null; }
+        var dist = linestring_dist(this.loc);
+        if(dist===null){ return null; }
 
         // corner penalty
         var corner_penalty=0.0;
         if(prev_edge && 
            prev_edge.keysvals &&
-           prev_edge.keysvals.name!==edge.keysvals.name){
+           prev_edge.keysvals.name!==this.keysvals.name){
           corner_penalty=50;
         }
+
+        // calc time
+        var time = state.time;
+        if(!time){
+          time=0;
+        }
+        time += dist/SPEED+this.rise*CLIMB_RATE;
         
         // hill penalty
         var hill_penalty=0;
-        if( edge.rise !== undefined ){
-          if( edge.keysvals.bridge !== "yes" && edge.keysvals.bridge !== "true" ) {
-            hill_penalty=edge.rise*100;
+        if( this.rise !== undefined ){
+          if( this.keysvals.bridge !== "yes" && this.keysvals.bridge !== "true" ) {
+            hill_penalty=this.rise*100;
           }
         } 
 
-        return mult*ret + corner_penalty + hill_penalty;
+        return {weight:mult*dist + corner_penalty + hill_penalty,
+                time:time};
       }
 
-      function edge_weight(prev_edge, edge) {
-        if( edge.type==="street"){
-          return street_weight( prev_edge, edge );
-        } else if( edge.type==="link" ) {
-          return 0;
-        } else {
-          return 50;
+      function link_weight(prev_edge, state){
+        return {weight:0,
+                time:state.time};
+      }
+
+      function board_weight(prev_edge, state){
+        if( this.service_id !== SERVICE_ID ){
+          return null;
         }
+
+        for( var i in this.departures ){
+          var departure = this.departures[i];
+          if( this.departures[i].depart > state.time ){
+            var deltat = this.departures[i].depart - state.time;
+            return  {weight:deltat*10+50,
+                     time:state.time+deltat,
+                     trip_id:this.departures[i].trip_id};
+          }
+        }
+
+        return null;
+      }
+
+      function alight_weight(prev_edge, state){
+        return {weight:50,
+                time:state.time};
+      }
+
+      function crossing_weight(prev_edge, state){
+        console.log( this );
+        console.log( state );
+
+        if( this.crossing_times[state.trip_id] === undefined ){
+          return null;
+        }
+
+        return {weight:this.crossing_times[state.trip_id]*10,
+                time:state.time+this.crossing_times[state.trip_id],
+                trip_id:state.trip_id};
+                
       }
 
       function draw_linestring(ctx, ary){
@@ -211,13 +258,21 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         draw_linestring( ctx, way.loc );
       }
 
+      function get_crossing_times(departures){
+        ret = {};
+        for( var i in departures ){
+          ret[departures[i].trip_id]=departures[i].crossing_time;
+        }
+        return ret;
+      }
+
       function Dijkstra(startnode){
         this.startnode = startnode;
         this.queue = new Queue();
         this.running = null;
 
         //dummy edge goes to origin
-        this.queue.insert( {'orig':null,'dest':startnode,'way':null,'edgeweight':0}, startnode, 0 );
+        this.queue.insert( {'orig':null,'dest':startnode,'way':null,'edgeweight':{weight:0,time:STARTTIME}}, startnode, 0 );
         
         this.step = function(exponent){  
           if( this.queue.empty() ){
@@ -232,14 +287,18 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           var best_edge_weight=best_edge[1];
 
           // stick that edge in the tree (destination points back to origin)
-          tree[best_edge_dest]={'orig':best_edge_orig,'weight':best_edge_weight,'edgeweight':best_edge[0]['edgeweight'],'trunkyness':0,'way':best_edge[0]['way']};
+          tree[best_edge_dest]={'orig':best_edge_orig,
+                                'weight':best_edge_weight,
+                                'edgeweight':best_edge[0]['edgeweight'],
+                                'trunkyness':0,
+                                'way':best_edge[0]['way']};
 
           // draw the edge
           draw_tree_branch( ctx, tree[best_edge_dest], exponent );
           //trace up the tree adding the edge weight
           var parentid=best_edge_orig;
           while(parentid){
-            tree[parentid]['trunkyness']+=best_edge[0]['edgeweight'];
+            tree[parentid]['trunkyness']+=best_edge[0]['edgeweight'].weight;
             draw_tree_branch( ctx, tree[parentid], exponent );
             parentid = tree[parentid]['orig']
           }
@@ -253,7 +312,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
             var candidate_edge = outgoing[i];
             var cand_dest_node = candidate_edge[0];
             var cand_edge_data = candidate_edge[1];
-            var cand_edge_weight = edge_weight( best_edge[0].way, cand_edge_data );
+            var cand_edge_weight = cand_edge_data.weight( best_edge[0].way, best_edge[0].edgeweight );
             if(cand_edge_weight===null){
               continue;
             }
@@ -262,7 +321,12 @@ function distVincenty(lon1, lat1, lon2, lat2) {
             }
 
             // insert into queue
-            this.queue.insert( {'orig':best_edge_dest, 'dest':cand_dest_node,'way':cand_edge_data, 'edgeweight':cand_edge_weight}, cand_dest_node, best_edge_weight+cand_edge_weight );
+            this.queue.insert( {'orig':best_edge_dest,
+                                'dest':cand_dest_node,
+                                'way':cand_edge_data, 
+                                'edgeweight':cand_edge_weight}, 
+                               cand_dest_node, 
+                               best_edge_weight+cand_edge_weight.weight );
             document.getElementById("queuesize").innerHTML=this.queue.size;
           }
         }
@@ -358,6 +422,8 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               } else if (branch.way.keysvals.highway==="cycleway") {
                 ctx.strokeStyle="000BA8";
               }
+            } else if( branch.way.type==="crossing" ){
+              ctx.strokeStyle="A3A3A3";
             }
             
             if(branch['trunkyness']==0){
@@ -548,15 +614,42 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               if( edge.stop_id===null || edge.next_stop_id===null ){
                  continue;
               }
-              edge.type="transit";
-              edge.loc=[edge.stop_loc, edge.next_stop_loc];
-              graph.add( "bart-"+edge.stop_id, "bart-"+edge.next_stop_id, edge );
+
+              // for every schedule in the edge, make a patternstop board, alight, and crossing edge
+              for( var service_id in edge.schedules ){
+                var schedule = edge.schedules[service_id];
+                for( var j in schedule ) {
+                  var pattern_schedule = schedule[j];
+                  var stop_vertex = "bart-"+edge.stop_id;
+                  var next_stop_vertex = "bart-"+edge.next_stop_id;
+                  var psv_id = "bart-"+edge.stop_id+"-"+pattern_schedule.pattern_key;
+                  var next_psv_id = "bart-"+edge.next_stop_id+"-"+pattern_schedule.pattern_key;
+
+                  var board_edge = {type:'board',
+                    departures:pattern_schedule.departures,
+                    service_id:service_id,
+                    loc:[edge.stop_loc,edge.stop_loc],
+                    weight:board_weight};
+                  var alight_edge = {type:'alight',
+                    loc:[edge.stop_loc,edge.stop_loc],
+                    weight:alight_weight};
+                  var crossing_edge = {type:'crossing',
+                    crossing_times:get_crossing_times(pattern_schedule.departures),
+                    loc:[edge.stop_loc,edge.next_stop_loc],
+                    weight:crossing_weight};
+
+                  graph.add(stop_vertex, psv_id, board_edge);
+                  graph.add(psv_id, next_psv_id, crossing_edge );
+                  graph.add(next_psv_id, next_stop_vertex, alight_edge);
+                }
+              }
             }
 
             for(var i=0; i<metathis.links.length; i++){
               var link = metathis.links[i];
               link.type='link';
               link.loc=[link.stop_loc,link.link_loc];
+              link.weight = link_weight;
               graph.add( "bart-"+link.stop_id, link.link_id, link );
               graph.add( link.link_id, "bart-"+link.stop_id, link );
             }
@@ -655,9 +748,11 @@ function distVincenty(lon1, lat1, lon2, lat2) {
                  continue;
               }
               way.type="street";
+              way.weight=street_weight;
               graph.add( way.fromv, way.tov, way );
               if( way.keysvals.oneway !== "true" && way.keysvals.oneway !== "yes" ){
                 var revway = {type:"street",reverse:true,loc:way.loc,keysvals:way.keysvals,id:way.id,tov:way.fromv,fromv:way.tov,rise:way.fall,fall:way.rise}
+                revway.weight=street_weight;
                 graph.add( revway.fromv, revway.tov, revway );
               }
             }
@@ -1050,7 +1145,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
                 if( edge.type==="street" ){
 
                   $("#edgeinfo").append( "<pre style='background-color:"+color+"'>"+JSON.stringify(edge, null, "  ")+
-                    "\nweight:"+edge_weight(null,edge)+
+                    "\nweight:"+edge.weight(null)+
                     "\nlength:"+linestring_dist(edge.loc)+"</pre>" );
                   $("#edgeinfo").append( "<canvas id='info"+i+"' style='background-color:#ffffff' width='400' height='200'><canvas>" );
         
