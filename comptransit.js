@@ -16,14 +16,14 @@ function reducef(keys,vals){
   return {'loc':null, 'stop_times':stop_times}; 
 }
 
-db.runCommand( {mapreduce:"bart_stop_times",
+db.runCommand( {mapreduce:"sfmta_stop_times",
                 map:mapf,
                 reduce:reducef,
-                out:"bart_stop_times_collected"} );
-
+                out:"sfmta_stop_times_collected"} );
 */
 
 /*
+
 // merge stop location into bart_stop_times_collected
 function mapf(){
   emit( this.stop_id, {'loc':[this.stop_lon,this.stop_lat],stop_times:null} );
@@ -43,10 +43,10 @@ function reducef(key,vals){
   return {'loc':loc,'stop_times':stop_times};
 }
 
-db.runCommand( {mapreduce:"bart_stops",
+db.runCommand( {mapreduce:"sfmta_stops",
                 map: mapf,
                 reduce: reducef,
-                out:{'reduce':'bart_stop_times_collected'}} );
+                out:{'reduce':'sfmta_stop_times_collected'}} );
 */
 
 /*
@@ -65,16 +65,16 @@ function reducef(key,values){
   return values[0];
 }
 
-db.runCommand( {mapreduce:"bart_stop_times_collected",
+db.runCommand( {mapreduce:"sfmta_stop_times_collected",
                 map: mapf,
                 reduce:reducef,
-                out:"bart_stop_times_loc"} );
+                out:"sfmta_stop_times_loc"} );
 */
 
-/*
+
 // set up a table into which we can fold trips and their stoptimes
 
-
+/*
 function mapf(){
   emit( this.trip_id, {"route_id":this.route_id,"service_id":this.service_id,"trip_id":this.trip_id, "trip_headsign" :this.trip_headsign, "direction_id" :this.direction_id, "block_id" :this.block_id, "shape_id" :this.shape_id, stop_times:[]} );
 }
@@ -83,14 +83,15 @@ function reducef(key,values){
   return values[0];
 }
 
-db.runCommand( {mapreduce:"bart_trips",
+db.runCommand( {mapreduce:"sfmta_trips",
                 map:mapf,
                 reduce:reducef,
-                out:"bart_trips_stoptimes"} );
+                out:"sfmta_trips_stoptimes"} );
 
 */
 
 /*
+
 // compile stop_times into trip object
 function mapf(){
   ret = {route_id:null,service_id:null,trip_id:null,trip_headsign:null,direction_id:null,block_id:null,shape_id:null,stop_times:[this.value]};
@@ -136,16 +137,16 @@ function reducef(key,values){
   return retdict;
 }
 
-db.runCommand( {mapreduce:"bart_stop_times_loc",
+db.runCommand( {mapreduce:"sfmta_stop_times_loc",
                 map:mapf,
                 reduce:reducef,
-                out:{"reduce":"bart_trips_stoptimes"}} );
+                out:{"reduce":"sfmta_trips_stoptimes"}} );
 
 */
 
 // find every stop_time associated with a particular pattern and stop
-/*
 
+/*
 function mapf(){
 
   function secs_since_midnight(time){
@@ -242,10 +243,10 @@ function reducef(key,values){
     stop_times:schedules};
 }
 
-db.runCommand( {mapreduce:"bart_trips_stoptimes",
+db.runCommand( {mapreduce:"sfmta_trips_stoptimes",
                 map:mapf,
                 reduce:reducef,
-                out:"bart_stop_time_bundles"} );
+                out:"sfmta_stop_time_bundles"} );
 */
 
 // collect and boil down edge information
@@ -289,12 +290,12 @@ function reducef(key, values){
           schedules:combined_scheds};
 }
 
-db.runCommand( {mapreduce:"bart_stop_time_bundles",
+db.runCommand( {mapreduce:"sfmta_stop_time_bundles",
                 map:mapf,
                 reduce:reducef,
-                out:"bart_edges"} );
-*/
+                out:"sfmta_edges"} );
 
+*/
 
 /*
 function mapf(){
@@ -316,10 +317,10 @@ function reducef(key,values){
   return {'links':null,'edges':edges};
 }
 
-db.runCommand( {mapreduce:"bart_edges",
+db.runCommand( {mapreduce:"sfmta_edges",
                 map:mapf,
                 reduce:reducef,
-                out:"bart_tiles"} );
+                out:"sfmta_tiles"} );
 */
 
 
@@ -332,25 +333,40 @@ function mapf(){
     return ret;
   }
 
-  links = {};
+  var links = {};
   for(var i=0; i<this.value.edges.length; i++){
     var edge = this.value.edges[i];
     if( links[edge.stop_id] === undefined ){
       link_node = db.city_nodes_joined.find({"value.count":{$gt:1}, "value.loc":{$near:edge.stop_loc}}).limit(1).toArray()[0];
+      printjson( edge.stop_id );
+      printjson( link_node.value.loc );
       links[edge.stop_id]={stop_id:edge.stop_id,
                            stop_loc:edge.stop_loc,
                            link_id:link_node.value.id,
                            link_loc:link_node.value.loc};
     }
   }
-  emit( this._id, {'links':values(links), 'edges':this.value.edges} )
+
+  links = values(links);
+  if(links.length < 300)
+    emit( this._id, {'links':values(links), 'edges':null} )
 }
 
 function reducef( key, vals ){
-  return vals[0];
+  var ret = {};
+  for(var i=0; i<vals.length; i++){
+    if(vals[i].links){
+      ret.links=vals[i].links;
+    }
+    if(vals[i].edges){
+      ret.edges=vals[i].edges;
+    }
+  }
+  return ret;
 }
 
-db.runCommand( {mapreduce:"bart_tiles",
+db.runCommand( {mapreduce:"sfmta_tiles",
                 map: mapf,
                 reduce: reducef,
-                out: {'replace':'bart_tiles'}} );
+                out: {'reduce':'sfmta_tiles'}} );
+
