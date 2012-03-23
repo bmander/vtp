@@ -1,0 +1,7 @@
+Importing a transit agency
+
+--go to http://www.gtfs-data-exchange.com and get a feed.
+--unzip into a folder
+--upload to your favorite mongo db
+  --$mongoimport -d test -c sfmta_stop_times --headerline --host localhost --type csv --file stop_times.txt
+--run the comptransit.js scripts ever so gently
