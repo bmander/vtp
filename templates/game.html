@@ -42,7 +42,7 @@ a:hover {text-decoration: underline; color: red;}
       var modebuttons=[];
 
       var STARTTIME=28800;
-      var SERVICE_ID="WKDY";
+      var SERVICE_ID="1";
 
 
 var rad=function(x){
@@ -128,7 +128,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
       function street_weight(prev_edge, state){
         var SPEED = 5.3; //meters per second
-        var CLIMB_RATE = 10; //seconds per vertical meter
+        var CLIMB_RATE = 5.0; //seconds per vertical meter
 
         // don't go against traffic if it's not allowed for bikes
         if( this.keysvals["oneway:bicycle"]==="yes" && this.reverse ){
@@ -161,7 +161,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         if(prev_edge && 
            prev_edge.keysvals &&
            prev_edge.keysvals.name!==this.keysvals.name){
-          corner_penalty=50;
+          corner_penalty=15;
         }
 
         // calc time
@@ -169,7 +169,8 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         if(!time){
           time=0;
         }
-        time += dist/SPEED+this.rise*CLIMB_RATE;
+        var deltat = dist/SPEED+this.rise*CLIMB_RATE;
+        time += deltat;
         
         // hill penalty
         var hill_penalty=0;
@@ -179,7 +180,8 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           }
         } 
 
-        return {weight:mult*dist + corner_penalty + hill_penalty,
+        //return {weight:mult*dist + corner_penalty + hill_penalty,
+        return {weight:deltat+corner_penalty,
                 time:time};
       }
 
@@ -197,7 +199,8 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           var departure = this.departures[i];
           if( this.departures[i].depart > state.time ){
             var deltat = this.departures[i].depart - state.time;
-            return  {weight:deltat*10+50,
+            return  {weight:deltat+60,
+            //return        {weight:0,
                      time:state.time+deltat,
                      trip_id:this.departures[i].trip_id};
           }
@@ -207,7 +210,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
       }
 
       function alight_weight(prev_edge, state){
-        return {weight:50,
+        return {weight:30,
                 time:state.time};
       }
 
@@ -219,7 +222,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           return null;
         }
 
-        return {weight:this.crossing_times[state.trip_id]*10,
+        return {weight:this.crossing_times[state.trip_id],
                 time:state.time+this.crossing_times[state.trip_id],
                 trip_id:state.trip_id};
                 
@@ -311,12 +314,12 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           for( var i=0; i<outgoing.length; i++ ){
             var candidate_edge = outgoing[i];
             var cand_dest_node = candidate_edge[0];
+            if( tree[cand_dest_node] !== undefined ){
+              continue;
+            }
             var cand_edge_data = candidate_edge[1];
             var cand_edge_weight = cand_edge_data.weight( best_edge[0].way, best_edge[0].edgeweight );
             if(cand_edge_weight===null){
-              continue;
-            }
-            if( tree[cand_dest_node] !== undefined ){
               continue;
             }
 
@@ -586,8 +589,10 @@ function distVincenty(lon1, lat1, lon2, lat2) {
             draw_dot( ctx, this.edges[i].next_stop_loc[0], this.edges[i].next_stop_loc[1], 0.1, "blue" );
           }
 
-          for(var i=0; i<this.links.length; i++){
-            draw_linestring( ctx, [this.links[i].stop_loc, this.links[i].link_loc] );
+          if( this.links ) {
+            for(var i=0; i<this.links.length; i++){
+              draw_linestring( ctx, [this.links[i].stop_loc, this.links[i].link_loc] );
+            }
           }
         }
 
@@ -645,13 +650,15 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               }
             }
 
-            for(var i=0; i<metathis.links.length; i++){
-              var link = metathis.links[i];
-              link.type='link';
-              link.loc=[link.stop_loc,link.link_loc];
-              link.weight = link_weight;
-              graph.add( "bart-"+link.stop_id, link.link_id, link );
-              graph.add( link.link_id, "bart-"+link.stop_id, link );
+            if( metathis.links ){
+              for(var i=0; i<metathis.links.length; i++){
+                var link = metathis.links[i];
+                link.type='link';
+                link.loc=[link.stop_loc,link.link_loc];
+                link.weight = link_weight;
+                graph.add( "bart-"+link.stop_id, link.link_id, link );
+                graph.add( link.link_id, "bart-"+link.stop_id, link );
+              }
             }
           });
           
