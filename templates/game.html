@@ -182,6 +182,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
         //return {weight:mult*dist + corner_penalty + hill_penalty,
         return {weight:deltat+corner_penalty,
+                dist:dist,
                 time:time};
       }
 
@@ -323,7 +324,11 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           //trace up the tree adding the edge weight
           var parentid=best_edge_orig;
           while(parentid){
-            tree[parentid]['trunkyness']+=best_edge[0]['edgeweight'].weight;
+            if( best_edge[0]['edgeweight'].dist !== undefined && best_edge[0]['edgeweight'].dist != 0 ){
+              tree[parentid]['trunkyness']+=best_edge[0]['edgeweight'].dist;
+            } else {
+              break;
+            }
             draw_tree_branch( ctx, tree[parentid], exponent );
             parentid = tree[parentid]['orig']
           }
@@ -450,8 +455,9 @@ function distVincenty(lon1, lat1, lon2, lat2) {
             } else if( branch.way.type==="crossing" ){
               ctx.strokeStyle="black";
             }
-            
-            if(branch['trunkyness']==0){
+           
+             
+            if(branch.way.type==="street" && branch['trunkyness']==0){
               if( branch.way.loc === undefined ){
                 console.log( branch.way );
               }
@@ -476,7 +482,9 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               }
             } else {
               var branchwidth=Math.pow(branch['trunkyness'],exponent)*thicken*Math.pow((rr-ll),0.5)*5;
-              draw_way(ctx,branch['way'],branchwidth);
+              if(branchwidth>0){
+                draw_way(ctx,branch['way'],branchwidth);
+              }
             }
        
           }
