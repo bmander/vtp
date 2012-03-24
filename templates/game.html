@@ -215,8 +215,8 @@ function distVincenty(lon1, lat1, lon2, lat2) {
       }
 
       function crossing_weight(prev_edge, state){
-        console.log( this );
-        console.log( state );
+        //console.log( this );
+        //console.log( state );
 
         if( this.crossing_times[state.trip_id] === undefined ){
           return null;
@@ -262,9 +262,31 @@ function distVincenty(lon1, lat1, lon2, lat2) {
       }
 
       function get_crossing_times(departures){
-        ret = {};
+        if(departures.length < 1){
+          return {};
+        }
+
+        var ret = {};
+        var crossing=null;
         for( var i in departures ){
-          ret[departures[i].trip_id]=departures[i].crossing_time;
+          if( departures[i].length == 3 ){
+            crossing = departures[i][2];
+          }
+          ret[departures[i][0]] = crossing;
+        }
+        return ret;
+      }
+
+      function get_departure_times(departures){
+        if(departures.length < 1){
+          return [];
+        }
+
+        var departure = departures[0][1];
+        var ret = [{trip_id:departures[0][0],depart:departure}];
+        for( var i=1; i<departures.length; i++ ) {
+          departure += departures[i][1];
+          ret.push( {trip_id:departures[i][0], depart:departure} );
         }
         return ret;
       }
@@ -426,7 +448,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
                 ctx.strokeStyle="000BA8";
               }
             } else if( branch.way.type==="crossing" ){
-              ctx.strokeStyle="A3A3A3";
+              ctx.strokeStyle="black";
             }
             
             if(branch['trunkyness']==0){
@@ -631,7 +653,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
                   var next_psv_id = "bart-"+edge.next_stop_id+"-"+pattern_schedule.pattern_key;
 
                   var board_edge = {type:'board',
-                    departures:pattern_schedule.departures,
+                    departures:get_departure_times(pattern_schedule.departures),
                     service_id:service_id,
                     loc:[edge.stop_loc,edge.stop_loc],
                     weight:board_weight};

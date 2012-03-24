@@ -252,12 +252,32 @@ db.runCommand( {mapreduce:"sfmta_trips_stoptimes",
 // collect and boil down edge information
 
 /*
+
 function mapf(){
   var scheds={};
   for( var service_id in this.value.stop_times ) {
-    var simple_departures = this.value.stop_times[service_id].map( function(stoptime){
-      return {trip_id:stoptime.trip_id, crossing_time:stoptime.crossing_time, depart:stoptime.departure_time_secs};
-    });
+
+    var simple_departures=[];
+    var last_crossing_time=null;
+    var last_departure_time=null;
+    for(var i=0; i<this.value.stop_times[service_id].length; i++){
+      var stoptime = this.value.stop_times[service_id][i];
+
+      var departure_time;
+      if( i==0 ){
+        departure_time=stoptime.departure_time_secs;
+      } else {
+        departure_time=stoptime.departure_time_secs-this.value.stop_times[service_id][i-1].departure_time_secs;
+      }
+
+      if( stoptime.crossing_time == last_crossing_time ){
+        simple_departures.push( [stoptime.trip_id, departure_time] );
+      } else {
+        simple_departures.push( [stoptime.trip_id, departure_time, stoptime.crossing_time] );
+      }
+      last_crossing_time=stoptime.crossing_time; 
+    }
+
     scheds[service_id] = [{pattern_key:this.value.pattern_key,
                            departures:simple_departures}];
   }
@@ -347,9 +367,7 @@ function mapf(){
     }
   }
 
-  links = values(links);
-  if(links.length < 300)
-    emit( this._id, {'links':values(links), 'edges':null} )
+  emit( this._id, {'links':values(links), 'edges':null} )
 }
 
 function reducef( key, vals ){
