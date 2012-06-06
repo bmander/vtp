@@ -52,6 +52,7 @@ db.runCommand( { mapreduce: "city_osm_nodes",
 
 
 //merge loc and counts into one doc
+//this is as far as you need to go if you need counted nodes for transit links
 function mapf(){
   emit(this.value.id,this.value);
 }

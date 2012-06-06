@@ -22,7 +22,7 @@ server.open(function(err, client) {
   var collection = new mongodb.Collection(client,"tiled_ways");
   var compcoll = new mongodb.Collection(client,"simple_tiles");
   var profilecoll = new mongodb.Collection(client,"profiles");
-  var transcoll = new mongodb.Collection(client,"bart_tiles");
+  var transcoll = new mongodb.Collection(client,"kc_tiles");
 
   app.get('/tile/*', function(req,res) {
     res.contentType("json");
@@ -64,4 +64,4 @@ app.get('/', function(req, res){
   });
 });
 
-app.listen(80);
+app.listen(8080);

@@ -67,7 +67,7 @@ function risefall( ary ){
 
 var tilewidth=0.02;
 
-var ff = new gf.GridFloat( "data/25747857/25747857" )
+var ff = new gf.GridFloat( "/storage/maps/data/25747857/25747857" )
 console.log( ff );
 console.log( ff.cell(0,0) );
 console.log( ff.elevation(-122.45345, 37.738332) );
