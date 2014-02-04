@@ -5,6 +5,7 @@ a:hover {text-decoration: underline; color: red;}
 </style>
     <!--<script src="/static/js/processing.js"></script>-->
     <script src="/static/js/jquery.js"></script>
+    <!-- <script src="http://ajax.aspnetcdn.com/ajax/jQuery/jquery-1.7.1.min.js"></script> -->
     <!--<script src="/static/js/socket.io.js"></script>-->
     <script type="text/javascript">
       var C=100;
@@ -164,17 +165,18 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         ctx.stroke();
       }
 
+      var default_linewidth = 0.000005*Math.pow((rr-ll),0.5)*10*unitscale;
       function draw_way(ctx, way, linewidth){
-        if( linewidth === undefined ) {
-          ctx.lineWidth=0.000005*Math.pow((rr-ll),0.5)*10*unitscale;
-        } else {
-          ctx.lineWidth=linewidth*unitscale;
-        }
-
         if(way.loc.length<2)
           return;
         if(!way.loc[0][0] || !way.loc[0][1])
           return;
+
+        if( linewidth === undefined ) {
+          ctx.lineWidth= default_linewidth;
+        } else {
+          ctx.lineWidth=linewidth*unitscale;
+        }
 
         draw_linestring( ctx, way.loc );
       }
@@ -196,7 +198,6 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           var best_edge = this.queue.extract_min();
           var best_edge_orig=best_edge[0]['orig']
           var best_edge_dest=best_edge[0]['dest'];
-          ctx.strokeStyle="D40000";
           var best_edge_weight=best_edge[1];
 
           // stick that edge in the tree (destination points back to origin)
@@ -231,7 +232,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
             // insert into queue
             this.queue.insert( {'orig':best_edge_dest, 'dest':cand_dest_node,'way':cand_edge_data, 'edgeweight':cand_edge_weight}, cand_dest_node, best_edge_weight+cand_edge_weight );
-            document.getElementById("queuesize").innerHTML=this.queue.size;
+            document.getElementById("queuesize").nodeValue=this.queue.size();
           }
         }
 
@@ -310,49 +311,54 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         return ret;
       }
 
+      var thicken=0.000007;
+      var scale_factor = thicken*Math.pow((rr-ll),0.5)*5;
+      var unitscale_factor = unitscale*scale_factor;
       function draw_tree_branch(ctx,branch, exponent){
-          var thicken=0.000007;
+        if(!branch['way'] ){
+          return;
+        }
 
-          if( exponent === undefined ){ exponent = 0.35; }
+        if( exponent === undefined ) { exponent = 0.35; }
 
-          if( branch['way'] ){
+        if(branch.way.keysvals.highway==="footway" || branch.way.keysvals.highway==="path") {
+          ctx.strokeStyle="007007";
+        } else if (branch.way.keysvals.bicycle==="designated" || branch.way.keysvals.cycleway==="lane") {
+          ctx.strokeStyle="910088";
+        } else if (branch.way.keysvals.highway==="cycleway") {
+          ctx.strokeStyle="000BA8";
+        } else {
+          ctx.strokeStyle="D40000";
+        }
 
-            if(branch.way.keysvals.highway==="footway" || branch.way.keysvals.highway==="path") {
-              ctx.strokeStyle="007007";
-            } else if (branch.way.keysvals.bicycle==="designated" || branch.way.keysvals.cycleway==="lane") {
-              ctx.strokeStyle="910088"; 
-            } else if (branch.way.keysvals.highway==="cycleway") {
-              ctx.strokeStyle="000BA8";
-            } else {
-              ctx.strokeStyle="D40000";
-            }
-            
-            if(branch['trunkyness']==0){
-              var segs = interpolate( branch.way.loc, 0.0001);
-              if( segs === null ){
-                return;
-              }
-
-              var len = 0;
-              if( branch.way.reverse ){
-                for(var i=1; i<segs.length; i++){
-                  len += distVincenty(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
-                  ctx.lineWidth=Math.pow(len,exponent)*thicken*unitscale*Math.pow((rr-ll),0.5)*5;
-                  draw_linestring( ctx, [segs[i-1],segs[i]] );
-                }
-              } else {
-                for(var i=segs.length-1; i>=1; i--){
-                  len += distVincenty(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
-                  ctx.lineWidth=Math.pow(len,exponent)*thicken*unitscale*Math.pow((rr-ll),0.5)*5;
-                  draw_linestring( ctx, [segs[i-1],segs[i]] );
-                }
-              }
-            } else {
-              var branchwidth=Math.pow(branch['trunkyness'],exponent)*thicken*Math.pow((rr-ll),0.5)*5;
-              draw_way(ctx,branch['way'],branchwidth);
-            }
-       
+        if(branch['trunkyness']==0){
+          var segs = interpolate( branch.way.loc, 0.0001);
+          if( segs === null ){
+            return;
           }
+
+          var len = 0;
+
+          if( branch.way.reverse ){
+            for(var i=1; i<segs.length; i++){
+              len = draw_segment(len, segs, i, exponent);
+            }
+          } else {
+            for(var i=segs.length-1; i>=1; i--){
+              len = draw_segment(len, segs, i, exponent);
+            }
+            }
+        } else {
+          var branchwidth=Math.pow(branch['trunkyness'],exponent)*scale_factor;
+          draw_way(ctx,branch['way'],branchwidth);
+        }
+      }
+
+      function draw_segment(len, segs, i, exponent) {
+        len += distVincenty(segs[i-1][0],segs[i-1][1],segs[i][0],segs[i][1]);
+        ctx.lineWidth=Math.pow(len,exponent)*unitscale_factor;
+        draw_linestring( ctx, [segs[i-1],segs[i]] );
+        return len;
       }
 
       function draw_tree(ctx,tree){
@@ -373,67 +379,139 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
       }
 
-      function Queue(){
-        this.data = {};
-        this.size=0;
+      // Binary MinHeap
+      function PriQueue() {
+        this.data = [];
         
-        this.insert = function(item,label,prio){
-          this.size += 1;
-
-          if( this.data[label] !== undefined ) {
-            if(this.data[label][1]>prio){
-              this.data[label] = [item,prio];
-            }
-          } else {
-            this.data[label] = [item,prio];
-          }
-        } 
-
-        this.min = function() {
-          var min=null;
-          var minweight=10000000;
-          for( var item in this.data ){
-            if ( this.data[item][1] < minweight ) {
-              minweight = this.data[item][1];
-              min=item; 
-            }
-          }
-          return min;
+        this.insert = function(item, prio)  {
+          this.data.push([item, prio]);
+          this.bubbleUp(this.data.length - 1);
         }
 
-        this.max = function() {
-          var max=null;
-          var maxweight=-10000000;
-          for( var item in this.data ){
-            if ( this.data[item][1] > maxweight ) {
-              maxweight = this.data[item][1];
-              min=item; 
+        this.getPriority = function(item) {
+          for (var i = 0; i < this.data.length; i++) {
+            if (this.data[i][0] == item) {
+              return this.data[i][1];
             }
           }
-          return min;
+          return null;
+        }
+
+        this.decreasePriority = function(item, prio) {
+          for (var i = 0; i < this.data.length; i++) {
+            if (this.data[i][0] == item) {
+              if(this.data[i][1] < prio) {
+                // you're not decreasing priority.
+                return;
+              }
+              this.data[i][1] = prio;
+              this.bubbleUp(i);
+              return;
+            }
+          }
         }
 
         this.extract_min = function() {
-          this.size -= 1;
-          var minkey = this.min();
+          var result = this.data[0];
+          var end = this.data.pop();
+          if (this.data.length > 0) {
+            this.data[0] = end;
+            this.sinkDown(0);
+          }
+          return result;
+        }
+
+        this.size = function() {
+          return this.data.length;
+        }
+
+        this.empty = function() {
+          return 0 === this.data.length;
+        }
+
+        this.bubbleUp = function(offset) {
+          var el = this.data[offset];
+          while(offset > 0) {
+            var parentOffset = Math.floor((offset + 1) / 2) - 1;
+            var parent = this.data[parentOffset];
+            if(el[1] < parent[1]) {
+              this.data[parentOffset] = el;
+              this.data[offset] = parent;
+              offset = parentOffset;
+            }
+            else {
+              break;
+            }
+          }
+        }
+
+        this.sinkDown = function(offset) {
+          var el = this.data[offset];
+          while(true) {
+            // Compute the indices of the child elements.
+            var child2N = (offset + 1) * 2;
+            var child1N = child2N - 1;
+
+            var swap = null;
+
+            // If the first child exists (is inside the array)...
+            if (child1N < this.data.length) {
+              var child1 = this.data[child1N];
+              if (child1[1] < el[1]) {
+                swap = child1N;
+              }
+            }
+            // Do the same checks for the other child.
+            if (child2N < this.data.length) {
+              var child2 = this.data[child2N];
+              if (child2[1] < (swap == null ? el[1] : child1[1])) {
+                swap = child2N;
+              }
+            }
+
+            // If the element needs to be moved, swap it, and continue.
+            if (swap != null) {
+              this.data[offset] = this.data[swap];
+              this.data[swap] = el;
+              offset = swap;
+            }
+            // Otherwise, we are done.
+            else {
+              break;
+            }
+          }
+        }
+      }
+
+      function Queue(){
+        this.data = {};
+        this.priQueue = new PriQueue();
+
+        this.insert = function(item,key,prio){
+          if( this.data[key] !== undefined ) {
+            if(this.data[key][1] > prio) {
+              this.data[key] = [item,prio];
+              this.priQueue.decreasePriority(key, prio);
+            }
+          } else {
+            this.data[key] = [item,prio];
+            this.priQueue.insert(key, prio);
+          }
+        }
+
+        this.extract_min = function() {
+          var minkey = this.priQueue.extract_min()[0];
           var ret = this.data[minkey];
           delete this.data[minkey];
           return ret;
         }
 
-        this.extract_max = function() {
-          this.size -= 1;
-          var maxkey = this.max();
-          var ret = this.data[maxkey];
-          delete this.data[maxkey];
-          return ret;
+        this.empty = function() {
+          return this.priQueue.empty();
         }
 
-        this.empty = function() {
-          for( var item in this.data ){
-            return false;
-          }
-          return true;
+        this.size = function() {
+          return this.priQueue.size();
         }
       }
       
@@ -504,6 +582,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         this.fetch = function(ctx, graph){
           var metathis=this;
 
+          // $.getJSON("http://shortestpathtree.org/comptile/"+this.tilekey(), function(data){
           $.getJSON("/comptile/"+this.tilekey(), function(data){
             if( data===null){
               return;
@@ -556,6 +635,9 @@ function distVincenty(lon1, lat1, lon2, lat2) {
 
         var xscale = canvas.width/((rr-ll)*unitscale);
         var yscale = canvas.height/((bb-tt)*unitscale);
+
+        scale_factor = thicken*Math.pow((rr-ll),0.5)*5;
+        unitscale_factor = unitscale*scale_factor;
 
         ctx.translate( -ll*xscale*unitscale, -tt*yscale*unitscale );
         ctx.scale(xscale,yscale);
@@ -610,7 +692,7 @@ function distVincenty(lon1, lat1, lon2, lat2) {
               tilequeue.insert( tiles[tilekey], tilekey, 0 );
 
               ntiles += 1;
-              document.getElementById("tilecount").innerHTML=ntiles;
+              document.getElementById("tilecount").nodeValue=ntiles;
             } 
             y += tilewidth;
           }
@@ -715,6 +797,16 @@ function distVincenty(lon1, lat1, lon2, lat2) {
         return ret;
       }
 
+      function showLocation(lat, lon) {
+        ll=lon - (portwidth / 2.0);
+        rr=ll+portwidth;
+        bb=lat - (portheight / 2.0);
+        tt=bb+portheight;
+        apply_transform();
+        fetchTiles();
+        redraw();
+      }
+
       $(document).ready( function() {
 
         $("#routemode").data("mode","route").css("background-color","AFE6AC");
@@ -781,6 +873,18 @@ function distVincenty(lon1, lat1, lon2, lat2) {
           if (event.preventDefault)
             event.preventDefault();
           event.returnValue = false;
+        }
+
+        function setPosition(position) {
+          showLocation(position.coords.latitude, position.coords.longitude);
+        }
+
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(setPosition, function() {
+            console.log("geolocation error");
+          });
+        } else {
+          error('not supported');
         }
 
         canvas = $("#canvas")[0]
@@ -1006,13 +1110,14 @@ function distVincenty(lon1, lat1, lon2, lat2) {
       <p>This thing is a memory hog. Panning in particular will seriously crash your browser after a few minutes. I'll see what I can do.</p>
       <h2>Some places to go</h2>
       <ul> 
-      <li onclick="ll=-71.173370;rr=ll+portwidth;bb=42.289865;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Boston</a></li>
-      <li onclick="ll=-122.41940;rr=ll+portwidth;bb=47.56367;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Seattle</a></li>
-      <li onclick="ll=-122.747846;rr=ll+portwidth;bb=45.456993;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Portland</a></li>
-      <li onclick="ll=-122.521305;rr=ll+portwidth;bb=37.704195;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">San Francisco</a></li>
-      <li onclick="ll=-74.046478;rr=ll+portwidth;bb=40.720721;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">New York City</a></li>
-      <li onclick="ll=12.509308;rr=ll+portwidth;bb=55.658028;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Copenhagen</a></li>
-      <li onclick="ll=-97.828548;rr=ll+portwidth;bb=30.20249;tt=bb+portheight;apply_transform();fetchTiles();redraw();"><a onclick="return false;" href="">Austin</a></li>
+
+      <li><a onclick="showLocation(42.3420685, -71.094073); return false;" href="">Boston</a></li>
+      <li><a onclick="showLocation(47.6158735, -122.3401); return false;" href="">Seattle</a></li>
+      <li><a onclick="showLocation(45.5091965, -122.668546); return false;" href="">Portland</a></li>
+      <li><a onclick="showLocation(37.7563985, -122.442005); return false;" href="">San Francisco</a></li>
+      <li><a onclick="showLocation(40.7729245, -73.967178); return false;" href="">New York City</a></li>
+      <li><a onclick="showLocation(55.7102315, 12.430008); return false;" href="">Copenhagen</a></li>
+      <li><a onclick="showLocation(30.2546935, -97.749248); return false;" href="">Austin</a></li>
       </ul>
       <h2>Fancy information</h2>
       <div id="fancy">
